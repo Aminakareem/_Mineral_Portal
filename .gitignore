@@ -1,0 +1,26 @@
+# Dependencies & build output
+node_modules/
+dist/
+
+# Large geospatial rasters (keep locally; use external storage or Git LFS if needed)
+*.tif
+*.tif.ovr
+*.tif.vat.cpg
+*.tif.vat.dbf
+
+# Incomplete downloads
+*.crdownload
+
+# OS & editor
+.DS_Store
+*.local
+.env
+.env.*
+!.env.example
+Thumbs.db
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/

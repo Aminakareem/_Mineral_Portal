@@ -1,0 +1,1847 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NMIP - National Mineral Intelligence Portal</title>
+    <link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --bg-color: #0b111e;
+            --panel-bg: #111827;
+            --panel-bg-hover: #1f2937;
+            --accent-green: #10b981;
+            --text-main: #f3f4f6;
+            --text-muted: #9ca3af;
+            --border-color: #374151;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* --- HEADER --- */
+        header {
+            background-color: var(--panel-bg);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 0 2rem;
+            height: 70px;
+            z-index: 10;
+        }
+
+        .logo-area {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .logo-icon {
+            color: var(--accent-green);
+            font-size: 1.75rem;
+        }
+
+        .logo-text h1 {
+            font-size: 1.2rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+            line-height: 1.1;
+        }
+
+        .logo-text span {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            display: block;
+        }
+
+        nav {
+            display: flex;
+            gap: 1rem;
+            height: 100%;
+        }
+
+        .nav-btn {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            font-weight: 600;
+            padding: 0 1.25rem;
+            cursor: pointer;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .nav-btn:hover {
+            color: var(--text-main);
+        }
+
+        .nav-btn.active {
+            color: var(--text-main);
+            background-color: rgba(255, 255, 255, 0.03);
+        }
+
+        .nav-btn.active::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 15%;
+            width: 70%;
+            height: 3px;
+            background-color: var(--accent-green);
+            border-radius: 3px 3px 0 0;
+        }
+
+        .admin-area {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            color: var(--text-muted);
+        }
+
+        .admin-profile {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            cursor: pointer;
+        }
+
+        /* --- MAIN CONTENT & LAYOUT --- */
+        .main-container {
+            display: flex;
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .view-section {
+            display: none;
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+
+        .view-section.active {
+            display: flex;
+        }
+
+        /* Placeholder styles for future work */
+        .placeholder-view {
+            justify-content: center;
+            align-items: center;
+            font-size: 1.5rem;
+            color: var(--text-muted);
+        }
+
+        /* --- MAP & SIDEBAR LAYOUT --- */
+        #map {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .sidebar-container {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            bottom: 20px;
+            width: 320px;
+            z-index: 5;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            pointer-events: none; /* Allows interacting with map behind gaps */
+        }
+
+        /* --- DYNAMIC SIDEBAR LAYER COMPONENT --- */
+        .layer-panel {
+            background-color: rgba(17, 24, 39, 0.95);
+            backdrop-filter: blur(8px);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 15px;
+            pointer-events: auto; /* Re-enable pointer events for the UI panel */
+            max-height: 85vh;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
+        }
+
+        .panel-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .panel-header i.fa-layer-group {
+            color: var(--accent-green);
+            font-size: 1.25rem;
+        }
+
+        .panel-title h2 {
+            font-size: 0.95rem;
+            font-weight: 600;
+        }
+
+        .panel-title span {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .layer-list {
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        /* Accordion Row */
+        .layer-group-item {
+            background-color: rgba(255, 255, 255, 0.03);
+            border: 1px solid transparent;
+            border-radius: 6px;
+            overflow: hidden;
+            transition: all 0.2s ease;
+        }
+
+        .layer-group-item:hover {
+            border-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .group-trigger {
+            width: 100%;
+            background: none;
+            border: none;
+            padding: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            color: var(--text-main);
+            text-align: left;
+        }
+
+        .group-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.9rem;
+            font-weight: 600;
+        }
+
+        /* Marker shape styles matching images */
+        .marker-icon {
+            width: 14px;
+            height: 14px;
+            display: inline-block;
+        }
+        .marker-circle { border-radius: 50%; }
+        .marker-square { border-radius: 3px; }
+        .marker-triangle {
+            width: 0; height: 0;
+            border-left: 7px solid transparent;
+            border-right: 7px solid transparent;
+            border-bottom: 13px solid transparent;
+            background: none !important;
+        }
+        .marker-star {
+            background: none !important;
+            color: #ef4444;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .marker-pill { border-radius: 10px; height: 8px; width: 16px; }
+
+        .group-right {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .count-badge {
+            background-color: rgba(255, 255, 255, 0.1);
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-main);
+        }
+
+        .visibility-toggle {
+            background: none;
+            border: none;
+            color: var(--text-muted);
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: color 0.2s;
+        }
+
+        .visibility-toggle:hover, .visibility-toggle.active {
+            color: var(--accent-green);
+        }
+
+        .chevron {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            transition: transform 0.3s ease;
+        }
+
+        .layer-group-item.open .chevron {
+            transform: rotate(180deg);
+        }
+
+        /* Dropdown content */
+        .group-dropdown {
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.3s ease-out;
+            background-color: rgba(0, 0, 0, 0.2);
+            border-top: 1px solid rgba(255, 255, 255, 0.02);
+        }
+
+        .layer-group-item.open .group-dropdown {
+            max-height: 500px;
+            transition: max-height 0.4s ease-in;
+        }
+
+        .sub-item-list {
+            list-style: none;
+            padding: 8px 12px 12px 36px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .sub-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 0.85rem;
+            color: var(--text-muted);
+            cursor: pointer;
+            transition: background 0.2s, color 0.2s;
+            padding: 6px 8px;
+            border-radius: 6px;
+        }
+
+        .sub-item:hover,
+        .sub-item.active {
+            color: var(--accent-green);
+            background-color: rgba(255, 255, 255, 0.06);
+        }
+
+        .sub-item-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .sub-item .sub-count {
+            font-weight: 600;
+            color: var(--text-main);
+        }
+
+        /* Global Legend Action Buttons */
+        .legend-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 15px;
+            padding-top: 10px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .action-btn {
+            background-color: transparent;
+            border: 1px solid var(--border-color);
+            color: var(--text-main);
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .action-btn:hover {
+            background-color: var(--panel-bg-hover);
+            border-color: var(--text-muted);
+        }
+
+        .mapboxgl-popup-content {
+            background: rgba(15, 23, 42, 0.98);
+            border: 1px solid rgba(148, 163, 184, 0.16);
+            border-radius: 18px;
+            padding: 0;
+            color: var(--text-main);
+            box-shadow: 0 18px 40px rgba(0,0,0,0.35);
+        }
+
+        .popup-card {
+            min-width: 280px;
+            max-width: 320px;
+            padding: 18px 18px 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .popup-header {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .popup-title {
+            font-size: 1.05rem;
+            font-weight: 700;
+            line-height: 1.2;
+        }
+
+        .popup-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(249, 115, 22, 0.16);
+            color: #f59e0b;
+            padding: 4px 10px;
+            border-radius: 999px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: capitalize;
+        }
+
+        .popup-row {
+            display: grid;
+            grid-template-columns: 32px 1fr;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .popup-icon {
+            width: 32px;
+            height: 32px;
+            display: grid;
+            place-items: center;
+            border-radius: 12px;
+            background: rgba(148, 163, 184, 0.08);
+            color: var(--text-main);
+            font-size: 0.95rem;
+        }
+
+        .popup-meta {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .popup-meta .label {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+        }
+
+        .popup-meta .value {
+            font-size: 0.9rem;
+            font-weight: 700;
+            line-height: 1.2;
+            color: var(--text-main);
+            word-break: break-word;
+        }
+
+        .mapboxgl-popup-close-button {
+            color: var(--text-main);
+            opacity: 0.7;
+        }
+
+        .mapboxgl-popup-close-button:hover {
+            opacity: 1;
+        }
+
+        /* Search panel (right) */
+        .search-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 360px;
+            z-index: 7;
+            background: rgba(17,24,39,0.95);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            padding: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+        }
+
+        .search-header {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+
+        .search-input {
+            flex: 1;
+            background: transparent;
+            border: 1px solid rgba(255,255,255,0.04);
+            color: var(--text-main);
+            padding: 8px 10px;
+            border-radius: 8px;
+            outline: none;
+        }
+
+        .search-input::placeholder { color: var(--text-muted); }
+
+        .search-results {
+            max-height: 420px;
+            overflow: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 6px;
+        }
+
+        .search-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            padding: 10px;
+            border-radius: 8px;
+            background: transparent;
+            cursor: pointer;
+            transition: background 0.12s, color 0.12s;
+        }
+
+        .search-item:hover {
+            background: rgba(255,255,255,0.02);
+            color: var(--text-main);
+        }
+
+        .search-item-left { display:flex; gap:10px; align-items:center; }
+        .search-item .label { font-size: 0.9rem; font-weight: 700; }
+        .search-item .sub { font-size: 0.75rem; color: var(--text-muted); }
+        .search-count { background: rgba(255,255,255,0.04); padding: 4px 8px; border-radius: 999px; font-weight:700; font-size:0.75rem; }
+        .search-panel.collapsed { width: 240px; }
+        .search-panel.open { width: 360px; }
+        .search-panel.collapsed .search-results { display: none; }
+
+        /* Scrollbar Styling */
+        .layer-list::-webkit-scrollbar { width: 5px; }
+        .layer-list::-webkit-scrollbar-track { background: transparent; }
+        .layer-list::-webkit-scrollbar-thumb { background: #374151; border-radius: 10px; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="logo-area">
+            <svg class="logo-icon" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22" x2="12" y2="12"></line></svg>
+            <div class="logo-text">
+                <h1>NMIP</h1>
+                <span>National Mineral Intelligence Portal</span>
+            </div>
+        </div>
+        <nav>
+            <button class="nav-btn" onclick="switchView('dashboard', this)">Dashboard</button>
+            <button class="nav-btn active" onclick="switchView('mineral-map', this)">Mineral Map</button>
+            <button class="nav-btn" onclick="switchView('alerts', this)">Alerts</button>
+        </nav>
+        <div class="admin-area">
+            <i class="fa-regular d-icon fa-bell"></i>
+            <i class="fa-regular d-icon fa-circle-question"></i>
+            <div class="admin-profile">
+                <i class="fa-regular fa-circle-user" style="font-size: 1.25rem;"></i>
+                <span>Admin</span>
+                <i class="fa-solid fa-chevron-down" style="font-size: 0.7rem;"></i>
+            </div>
+        </div>
+    </header>
+
+    <div class="main-container">
+
+        <div id="dashboard" class="view-section placeholder-view">
+            <p>Dashboard Metrics & Layout Workspace (Empty Component)</p>
+        </div>
+
+        <div id="mineral-map" class="view-section active">
+            <div id="map"></div>
+
+           <div class="sidebar-container">
+
+    <!-- SECTION 1: MINERAL LAYERS (wrapped, all existing functionality kept) -->
+    <div class="layer-panel">
+        <div class="panel-header" onclick="toggleSection('mineral-section', this)" style="cursor:pointer;">
+            <i class="fa-solid fa-layer-group" style="color:var(--accent-green);font-size:1.25rem;"></i>
+            <div class="panel-title" style="flex:1;">
+                <h2>Mineral Layers</h2>
+                <span id="active-layers-text">0 of 0 active</span>
+            </div>
+            <i class="fa-solid fa-chevron-down section-chevron" style="color:var(--text-muted);font-size:0.75rem;transition:transform 0.3s;"></i>
+        </div>
+
+        <div id="mineral-section" style="overflow:hidden; max-height:1000px; transition: max-height 0.4s ease;">
+            <div class="layer-list" id="dynamic-layer-list"></div>
+            <div class="legend-actions">
+                <button class="action-btn" onclick="toggleAllLayers(true)">Show All</button>
+                <button class="action-btn" onclick="toggleAllLayers(false)">Hide All</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SECTION 2: METALLOGENIC ZONES (new) -->
+    <div class="layer-panel">
+        <div class="panel-header" onclick="toggleSection('metallo-section', this)" style="cursor:pointer;">
+            <i class="fa-solid fa-map" style="color:#a855f7;font-size:1.25rem;"></i>
+            <div class="panel-title" style="flex:1;">
+                <h2>Metallogenic Zones</h2>
+                <span id="metallo-active-text">13 zones</span>
+            </div>
+            <i class="fa-solid fa-chevron-down section-chevron" style="color:var(--text-muted);font-size:0.75rem;transition:transform 0.3s;"></i>
+        </div>
+
+        <div id="metallo-section" style="overflow:hidden; max-height:0; transition: max-height 0.4s ease;">
+            <div class="layer-list">
+
+                <!-- Zone 01 -->
+                <div class="layer-group-item" id="metallo-item-01">
+                    <div class="group-trigger" style="padding:10px 12px;">
+                        <div class="group-left">
+                            <span style="background:#ef4444;color:#fff;width:22px;height:22px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:700;flex-shrink:0;">01</span>
+                            <span style="font-size:0.88rem;font-weight:600;">Korakoram Block</span>
+                        </div>
+                        <div class="group-right">
+                            <button class="visibility-toggle active" onclick="toggleZone('zone-01', event)">
+                                <i class="fa-regular fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Zone 02 -->
+                <div class="layer-group-item" id="metallo-item-02">
+                    <div class="group-trigger" style="padding:10px 12px;">
+                        <div class="group-left">
+                            <span style="background:#f97316;color:#fff;width:22px;height:22px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:700;flex-shrink:0;">02</span>
+                            <span style="font-size:0.88rem;font-weight:600;">Kohistan Magmati Arc</span>
+                        </div>
+                        <div class="group-right">
+                            <button class="visibility-toggle active" onclick="toggleZone('zone-02', event)">
+                                <i class="fa-regular fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Zone 03 -->
+                <div class="layer-group-item" id="metallo-item-03">
+                    <div class="group-trigger" style="padding:10px 12px;">
+                        <div class="group-left">
+                            <span style="background:#eab308;color:#fff;width:22px;height:22px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:700;flex-shrink:0;">03</span>
+                            <span style="font-size:0.88rem;font-weight:600;">Hazara Fold & Thrust Belt</span>
+                        </div>
+                        <div class="group-right">
+                            <button class="visibility-toggle active" onclick="toggleZone('zone-03', event)">
+                                <i class="fa-regular fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Zone 04 -->
+                <div class="layer-group-item" id="metallo-item-04">
+                    <div class="group-trigger" style="padding:10px 12px;">
+                        <div class="group-left">
+                            <span style="background:#22c55e;color:#fff;width:22px;height:22px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:700;flex-shrink:0;">04</span>
+                            <span style="font-size:0.88rem;font-weight:600;">Salt Range Kalachitta Ranges</span>
+                        </div>
+                        <div class="group-right">
+                            <button class="visibility-toggle active" onclick="toggleZone('zone-04', event)">
+                                <i class="fa-regular fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Zone 05 -->
+                <div class="layer-group-item" id="metallo-item-05">
+                    <div class="group-trigger" style="padding:10px 12px;">
+                        <div class="group-left">
+                            <span style="background:#06b6d4;color:#fff;width:22px;height:22px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:700;flex-shrink:0;">05</span>
+                            <span style="font-size:0.88rem;font-weight:600;">Indian Shield</span>
+                        </div>
+                        <div class="group-right">
+                            <button class="visibility-toggle active" onclick="toggleZone('zone-05', event)">
+                                <i class="fa-regular fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Zone 06 -->
+                <div class="layer-group-item" id="metallo-item-06">
+                    <div class="group-trigger" style="padding:10px 12px;">
+                        <div class="group-left">
+                            <span style="background:#8b5cf6;color:#fff;width:22px;height:22px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:700;flex-shrink:0;">06</span>
+                            <span style="font-size:0.88rem;font-weight:600;">Sulaiman Fold & Thrust Belt</span>
+                        </div>
+                        <div class="group-right">
+                            <button class="visibility-toggle active" onclick="toggleZone('zone-06', event)">
+                                <i class="fa-regular fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Zone 07 -->
+                <div class="layer-group-item" id="metallo-item-07">
+                    <div class="group-trigger" style="padding:10px 12px;">
+                        <div class="group-left">
+                            <span style="background:#ec4899;color:#fff;width:22px;height:22px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:700;flex-shrink:0;">07</span>
+                            <span style="font-size:0.88rem;font-weight:600;">Kirthar Fold & Thrust Belt</span>
+                        </div>
+                        <div class="group-right">
+                            <button class="visibility-toggle active" onclick="toggleZone('zone-07', event)">
+                                <i class="fa-regular fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Zone 08 -->
+                <div class="layer-group-item" id="metallo-item-08">
+                    <div class="group-trigger" style="padding:10px 12px;">
+                        <div class="group-left">
+                            <span style="background:#14b8a6;color:#fff;width:22px;height:22px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:700;flex-shrink:0;">08</span>
+                            <span style="font-size:0.88rem;font-weight:600;">Axial Belt</span>
+                        </div>
+                        <div class="group-right">
+                            <button class="visibility-toggle active" onclick="toggleZone('zone-08', event)">
+                                <i class="fa-regular fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Zone 09 -->
+                <div class="layer-group-item" id="metallo-item-09">
+                    <div class="group-trigger" style="padding:10px 12px;">
+                        <div class="group-left">
+                            <span style="background:#64748b;color:#fff;width:22px;height:22px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:700;flex-shrink:0;">09</span>
+                            <span style="font-size:0.88rem;font-weight:600;">Lasbela-Khuzdar Ophiolite Belt</span>
+                        </div>
+                        <div class="group-right">
+                            <button class="visibility-toggle active" onclick="toggleZone('zone-09', event)">
+                                <i class="fa-regular fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Zone 10 -->
+                <div class="layer-group-item" id="metallo-item-10">
+                    <div class="group-trigger" style="padding:10px 12px;">
+                        <div class="group-left">
+                            <span style="background:#f43f5e;color:#fff;width:22px;height:22px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:700;flex-shrink:0;">10</span>
+                            <span style="font-size:0.88rem;font-weight:600;">Chaman-Ornach Nal Fault Zone</span>
+                        </div>
+                        <div class="group-right">
+                            <button class="visibility-toggle active" onclick="toggleZone('zone-10', event)">
+                                <i class="fa-regular fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Zone 11 -->
+                <div class="layer-group-item" id="metallo-item-11">
+                    <div class="group-trigger" style="padding:10px 12px;">
+                        <div class="group-left">
+                            <span style="background:#0ea5e9;color:#fff;width:22px;height:22px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:700;flex-shrink:0;">11</span>
+                            <span style="font-size:0.88rem;font-weight:600;">Chagai Magmatic Arc</span>
+                        </div>
+                        <div class="group-right">
+                            <button class="visibility-toggle active" onclick="toggleZone('zone-11', event)">
+                                <i class="fa-regular fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Zone 12 -->
+                <div class="layer-group-item" id="metallo-item-12">
+                    <div class="group-trigger" style="padding:10px 12px;">
+                        <div class="group-left">
+                            <span style="background:#a855f7;color:#fff;width:22px;height:22px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:700;flex-shrink:0;">12</span>
+                            <span style="font-size:0.88rem;font-weight:600;">Makran Accretionary Prism</span>
+                        </div>
+                        <div class="group-right">
+                            <button class="visibility-toggle active" onclick="toggleZone('zone-12', event)">
+                                <i class="fa-regular fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Zone 13 -->
+                <div class="layer-group-item" id="metallo-item-13">
+                    <div class="group-trigger" style="padding:10px 12px;">
+                        <div class="group-left">
+                            <span style="background:#10b981;color:#fff;width:22px;height:22px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:0.7rem;font-weight:700;flex-shrink:0;">13</span>
+                            <span style="font-size:0.88rem;font-weight:600;">Rann of Kutch Zone</span>
+                        </div>
+                        <div class="group-right">
+                            <button class="visibility-toggle active" onclick="toggleZone('zone-13', event)">
+                                <i class="fa-regular fa-eye"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="legend-actions">
+                <button class="action-btn" onclick="toggleAllZones(true)">Show All</button>
+                <button class="action-btn" onclick="toggleAllZones(false)">Hide All</button>
+            </div>
+
+            </div>
+            
+        </div>
+    </div>
+    <!-- SECTION 3: DISASTER LAYERS -->
+<div class="layer-panel">
+    <div class="panel-header" onclick="toggleSection('disaster-section', this)" style="cursor:pointer;">
+        <i class="fa-solid fa-triangle-exclamation" style="color:#f97316;font-size:1.25rem;"></i>
+        <div class="panel-title" style="flex:1;">
+            <h2>Disaster Layers</h2>
+            <span id="disaster-active-text">3 layers</span>
+        </div>
+        <i class="fa-solid fa-chevron-down section-chevron" style="color:var(--text-muted);font-size:0.75rem;transition:transform 0.3s;"></i>
+    </div>
+
+    <div id="disaster-section" style="overflow:hidden; max-height:0; transition: max-height 0.4s ease;">
+        <div class="layer-list">
+
+            <!-- Flood -->
+            <div class="layer-group-item" id="disaster-item-flood">
+                <div class="group-trigger" style="padding:10px 12px;">
+                    <div class="group-left">
+                        <span style="background:#3b82f6;color:#fff;width:22px;height:22px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:0.65rem;flex-shrink:0;">
+                            <i class="fa-solid fa-water"></i>
+                        </span>
+                        <span style="font-size:0.88rem;font-weight:600;">Flood Extent 2025</span>
+                    </div>
+                    <div class="group-right">
+                        <button class="visibility-toggle active" onclick="toggleDisasterLayer('disaster-flood', event)">
+                            <i class="fa-regular fa-eye"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Earthquake -->
+            <div class="layer-group-item" id="disaster-item-earthquake">
+                <div class="group-trigger" style="padding:10px 12px;">
+                    <div class="group-left">
+                        <span style="background:#ef4444;color:#fff;width:22px;height:22px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:0.65rem;flex-shrink:0;">
+                            <i class="fa-solid fa-house-crack"></i>
+                        </span>
+                        <span style="font-size:0.88rem;font-weight:600;">Earthquake Zones</span>
+                    </div>
+                    <div class="group-right">
+                        <button class="visibility-toggle active" onclick="toggleDisasterLayer('disaster-earthquake', event)">
+                            <i class="fa-regular fa-eye"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Landslide -->
+            <div class="layer-group-item" id="disaster-item-landslide">
+                <div class="group-trigger" style="padding:10px 12px;">
+                    <div class="group-left">
+                        <span style="background:#a16207;color:#fff;width:22px;height:22px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:0.65rem;flex-shrink:0;">
+                            <i class="fa-solid fa-hill-rockslide"></i>
+                        </span>
+                        <span style="font-size:0.88rem;font-weight:600;">Landslide Risk</span>
+                    </div>
+                    <div class="group-right">
+                        <button class="visibility-toggle active" onclick="toggleDisasterLayer('disaster-landslide', event)">
+                            <i class="fa-regular fa-eye"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <div class="legend-actions">
+            <button class="action-btn" onclick="toggleAllDisaster(true)">Show All</button>
+            <button class="action-btn" onclick="toggleAllDisaster(false)">Hide All</button>
+        </div>
+    </div>
+</div>
+
+</div>
+ 
+
+            <!-- Search / Mineral list panel (right) -->
+            <div class="search-panel collapsed" id="search-panel">
+                <div class="search-header">
+                    <i class="fa-solid fa-magnifying-glass" style="color:var(--text-muted);"></i>
+                    <input id="search-input" class="search-input" placeholder="Search mineral type" />
+                    <button id="search-clear" title="Clear" style="background:none;border:none;color:var(--text-muted);cursor:pointer">✕</button>
+                </div>
+                <div class="search-results" id="search-results">
+                    <!-- dynamic mineral list -->
+                </div>
+            </div>
+        </div>
+
+        <div id="alerts" class="view-section placeholder-view">
+            <p>Alerts Engine Workspace (Empty Component)</p>
+        </div>
+
+    </div>
+
+    <script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+    <script>
+        // --- APPLICATION INITIALIZATION AND STATE HANDLING ---
+        
+        // Set your Mapbox public token in _Mineralportal/.env as VITE_MAPBOX_ACCESS_TOKEN
+        mapboxgl.accessToken = '';
+
+        // Simulated minerals.json payload containing setup definitions matching your asset legends
+       /* const mockMineralsJson = {
+            "layers": [
+                {
+                    "id": "metallic_minerals",
+                    "name": "Metallic Minerals",
+                    "count": 35,
+                    "marker_style": "marker-circle",
+                    "marker_color": "#6b7280",
+                    "visible": false,
+                    "items": [
+                        { "name": "Chromite", "count": 11, "color": "#22c55e" },
+                        { "name": "Copper-Gold", "count": 3, "color": "#06b6d4" },
+                        { "name": "Iron Ore", "count": 9, "color": "#22c55e" },
+                        { "name": "Manganese", "count": 9, "color": "#f97316" },
+                        { "name": "Zinc-Lead", "count": 3, "color": "#eab308" }
+                    ]
+                },
+                {
+                    "id": "dimension_stones",
+                    "name": "Dimension Stones",
+                    "count": 25,
+                    "marker_style": "marker-square",
+                    "marker_color": "#f97316",
+                    "visible": true,
+                    "items": [
+                        { "name": "Marble", "count": 15, "color": "#f97316" },
+                        { "name": "Granite", "count": 10, "color": "#fdba74" }
+                    ]
+                },
+                {
+                    "id": "chemical_fertilizer",
+                    "name": "Chemical, Fertilizer & Industrial",
+                    "count": 63,
+                    "marker_style": "marker-triangle",
+                    "marker_color": "#22c55e",
+                    "visible": true,
+                    "items": [
+                        { "name": "Limestone", "count": 40, "color": "#22c55e" },
+                        { "name": "Gypsum", "count": 23, "color": "#86efac" }
+                    ]
+                },
+                {
+                    "id": "gemstones",
+                    "name": "Gemstones",
+                    "count": 17,
+                    "marker_style": "marker-star",
+                    "marker_color": "#ef4444",
+                    "visible": true,
+                    "items": [
+                        { "name": "Ruby", "count": 5, "color": "#ef4444" },
+                        { "name": "Emerald", "count": 12, "color": "#10b981" }
+                    ]
+                },
+                {
+                    "id": "fuels",
+                    "name": "Fuels",
+                    "count": 143,
+                    "marker_style": "marker-pill",
+                    "marker_color": "#f97316",
+                    "visible": true,
+                    "items": [
+                        { "name": "Coal", "count": 93, "color": "#f97316" },
+                        { "name": "Natural Gas", "count": 50, "color": "#fed7aa" }
+                    ]
+                }
+            ]
+        };*/
+
+        // UI Header Switcher Configuration
+        function switchView(viewId, element) {
+            document.querySelectorAll('.view-section').forEach(view => view.classList.remove('active'));
+            document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+            
+            document.getElementById(viewId).classList.add('active');
+            element.classList.add('active');
+
+            if(viewId === 'mineral-map' && window.map) {
+                window.map.resize(); // Refreshes Canvas on viewport changes
+            }
+        }
+
+        // --- MAPBOX MAP SYSTEM DEVELOPMENT ---
+        const map = new mapboxgl.Map({
+            container: 'map',
+            style: 'mapbox://styles/mapbox/dark-v11', // Mapbox core premium dark theme
+            center: [69.3451, 30.3753], // Centered precisely over Pakistan
+            zoom: 5
+        });
+        window.map = map;
+
+        map.on('load', async () => {
+            // Pakistan Admin Boundaries (loaded from local GeoJSON file)
+            try {
+                const resp = await fetch('./geoboundries.geojson');
+                const pakistanData = await resp.json();
+
+                map.addSource('pakistan-boundary', {
+                    type: 'geojson',
+                    data: pakistanData
+                });
+
+                map.addLayer({
+                    id: 'pakistan-line',
+                    type: 'line',
+                    source: 'pakistan-boundary',
+                    layout: {},
+                    paint: {
+                        'line-color': '#10b981',
+                        'line-width': 2
+                    }
+                });
+
+                // Add a faint fill under the boundary to improve visibility (especially for Kashmir)
+                map.addLayer({
+                    id: 'pakistan-fill',
+                    type: 'fill',
+                    source: 'pakistan-boundary',
+                    paint: {
+                        'fill-color': 'rgba(16,185,129,0.04)',
+                        'fill-outline-color': '#10b981'
+                    }
+                });
+
+                // Debug: log loaded features count so we can confirm Kashmir feature is present
+                try {
+                    console.info('geoboundries features loaded:', pakistanData.features ? pakistanData.features.length : 0);
+                } catch (logErr) {
+                    console.warn('Unable to read pakistanData.features for debug', logErr);
+                }
+
+                // Compute simple bounding box for all coordinates and fit map to it
+                const computeBBox = (geo) => {
+                    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+                    const walkCoords = (coords) => {
+                        if (typeof coords[0] === 'number') {
+                            const x = coords[0], y = coords[1];
+                            if (x < minX) minX = x;
+                            if (y < minY) minY = y;
+                            if (x > maxX) maxX = x;
+                            if (y > maxY) maxY = y;
+                            return;
+                        }
+                        coords.forEach(c => walkCoords(c));
+                    };
+
+                    geo.features.forEach(f => {
+                        const g = f.geometry;
+                        if (g && g.coordinates) walkCoords(g.coordinates);
+                    });
+
+                    if (minX !== Infinity) return [[minX, minY], [maxX, maxY]];
+                    return null;
+                };
+
+                const bbox = computeBBox(pakistanData);
+                if (bbox) {
+                    try {
+                        map.fitBounds(bbox, { padding: 40 });
+                    } catch (fitErr) {
+                        console.warn('fitBounds failed:', fitErr);
+                    }
+                }
+
+            } catch (e) {
+                console.error('Failed to load geoboundries.geojson:', e);
+            }
+        });
+
+        // --- DYNAMIC DATA-DRIVEN LEGEND ARCHITECTURE ---
+        async function ensureMapReady() {
+            if (map && map.loaded && map.loaded()) return;
+            return new Promise(resolve => map.once('load', resolve));
+        }
+
+        async function loadCategoryIcons() {
+            const iconsToLoad = {
+                circle: './icons/circle.png',
+                square: './icons/square.png',
+                triangle: './icons/triangle.png',
+                star: './icons/star.png'
+            };
+            for (const [iconName, url] of Object.entries(iconsToLoad)) {
+                if (map.hasImage && map.hasImage(iconName)) continue;
+                await new Promise((resolve, reject) => {
+                    map.loadImage(url, (error, image) => {
+                        if (error) return reject(error);
+                        map.addImage(iconName, image, { sdf: true });
+                        resolve();
+                    });
+                });
+            }
+        }
+
+        async function initPortalLayers() {
+            try {
+                await ensureMapReady();
+                await loadCategoryIcons();
+
+                // Fetch real minerals.json from the workspace
+                const response = await fetch('./minerals.json');
+                if (!response.ok) {
+                    throw new Error(`minerals.json fetch failed: ${response.status} ${response.statusText}`);
+                }
+                const data = await response.json();
+
+                // data is expected to be an array of site objects; convert to GeoJSON
+                const categoryMap = {};
+                const normalize = (cat) => {
+                    const s = (cat || '').toString().toLowerCase().trim();
+                    if (!s) return 'unknown';
+                    if (s.includes('gem') || s.includes('precious')) return 'gemstones';
+                    if (s.includes('metallic') || s.includes('metal')) return 'metallic_minerals';
+                    if (s.includes('dimension') || s.includes('stone')) return 'dimension_stones';
+                    if (s.includes('chemical') || s.includes('fertilizer') || s.includes('industrial')) return 'chemical_fertilizer';
+                    if (s.includes('fuel') || s.includes('gas') || s.includes('coal') || s.includes('oil')) return 'fuels';
+                    return 'unknown';
+                };
+
+                // Build features and aggregate mineralType counts per category
+                const features = [];
+                const mineralTypeColors = {};
+                const categoryStyles = {
+                    'metallic_minerals': '#8b5cf6',
+                    'dimension_stones': '#f59e0b',
+                    'chemical_fertilizer': '#3b82f6',
+                    'gemstones': '#ef4444',
+                    'fuels': '#10b981',
+                    'unknown': '#64748b'
+                };
+                const categoryIconMap = {
+                    'metallic_minerals': 'circle',
+                    'dimension_stones': 'square',
+                    'chemical_fertilizer': 'triangle',
+                    'gemstones': 'star',
+                    'fuels': 'circle',
+                    'unknown': 'circle'
+                };
+                const typePalette = ['#f97316', '#22c55e', '#2563eb', '#db2777', '#eab308', '#14b8a6', '#a855f7', '#f43f5e', '#0f766e', '#4b5563'];
+                const getTypeColor = (typeName) => {
+                    const key = String(typeName || 'Unknown').trim();
+                    if (!key) return '#64748b';
+                    if (mineralTypeColors[key]) return mineralTypeColors[key];
+                    const index = Object.keys(mineralTypeColors).length % typePalette.length;
+                    const color = typePalette[index];
+                    mineralTypeColors[key] = color;
+                    return color;
+                };
+                const getCategoryIcon = (cat) => categoryIconMap[cat] || 'circle';
+
+                data.forEach(site => {
+                    const cat = normalize(site.category);
+                    const mName = String(site.mineralType || site.name || 'Unknown').trim();
+                    const mColor = getTypeColor(mName);
+
+                    const lon = Number(site.longitude);
+                    const lat = Number(site.latitude);
+                    if (Number.isNaN(lon) || Number.isNaN(lat)) {
+                        return;
+                    }
+
+                    if (!categoryMap[cat]) {
+                        categoryMap[cat] = {
+                            id: cat,
+                            name: cat.replace(/_/g,' ').replace(/\b\w/g, c=>c.toUpperCase()),
+                            count: 0,
+                            marker_color: categoryStyles[cat] || '#6b7280',
+                            visible: true,
+                            itemsMap: {}
+                        };
+                    }
+
+                    categoryMap[cat].count++;
+                    if (!categoryMap[cat].itemsMap[mName]) {
+                        categoryMap[cat].itemsMap[mName] = { count: 0, color: mColor };
+                    }
+                    categoryMap[cat].itemsMap[mName].count++;
+
+                    features.push({
+                        type: 'Feature',
+                        geometry: { type: 'Point', coordinates: [lon, lat] },
+                        properties: {
+                            id: site.id,
+                            name: site.name,
+                            mineralType: mName,
+                            category: cat,
+                            province: site.province,
+                            district: site.district,
+                            description: site.description,
+                            status: site.status,
+                            icon: getCategoryIcon(cat)
+                        }
+                    });
+                });
+
+                // Convert itemsMap into items arrays for legend rendering
+                Object.keys(categoryMap).forEach(cat => {
+                    const cm = categoryMap[cat];
+                    cm.items = Object.keys(cm.itemsMap || {}).map(name => ({ name, count: cm.itemsMap[name].count, color: cm.itemsMap[name].color }));
+                });
+
+                // Build a type-based color expression for the map
+                const mineralTypeColorExpression = ['match', ['get', 'mineralType']];
+                Object.entries(mineralTypeColors).forEach(([typeName, color]) => {
+                    mineralTypeColorExpression.push(typeName, color);
+                });
+                mineralTypeColorExpression.push('#64748b');
+
+                // Create/update minerals source
+                const mineralGeo = { type: 'FeatureCollection', features };
+                if (map.getSource && map.getSource('minerals')) {
+                    map.getSource('minerals').setData(mineralGeo);
+                } else {
+                    map.addSource('minerals', { type: 'geojson', data: mineralGeo });
+                }
+
+                // Add a separate symbol layer per category so toggling is simple and shapes match the legend
+                Object.keys(categoryMap).forEach(catId => {
+                    const layerId = catId;
+                    if (map.getLayer(layerId)) map.removeLayer(layerId);
+                    map.addLayer({
+                        id: layerId,
+                        type: 'symbol',
+                        source: 'minerals',
+                        filter: ['==', ['get', 'category'], catId],
+                        layout: {
+                            'icon-image': ['get', 'icon'],
+                            'icon-size': ['interpolate', ['linear'], ['zoom'], 3, 0.02, 5, 0.025, 8, 0.05, 11, 0.09, 14, 0.15],
+                            'icon-allow-overlap': true,
+                            'icon-ignore-placement': true
+                        },
+                        paint: {
+                            'icon-color': mineralTypeColorExpression,
+                            'icon-halo-color': '#000',
+                            'icon-halo-width': 1
+                        }
+                    });
+                    map.setLayoutProperty(layerId, 'visibility', categoryMap[catId].visible ? 'visible' : 'none');
+                });
+
+                // Expose category state globally so legend controls can toggle map layers
+                window.globalCategoryMap = categoryMap;
+                window.selectedMineralType = null;
+                // expose type color helper and palette so other UI can use it
+                window.getTypeColor = getTypeColor;
+                window.mineralTypeColors = mineralTypeColors;
+
+                const formatCoordinates = (lng, lat) => {
+                    const format = (value, isLon) => {
+                        const abs = Math.abs(value).toFixed(4);
+                        const direction = isLon ? (value >= 0 ? 'E' : 'W') : (value >= 0 ? 'N' : 'S');
+                        return `${abs}°${direction}`;
+                    };
+                    return `${format(lat, false)}, ${format(lng, true)}`;
+                };
+
+                const buildPopupHtml = (feature) => {
+                    const title = feature.properties.mineralType || feature.properties.name || 'Unknown Mineral';
+                    const categoryLabel = categoryMap[feature.properties.category]?.name || feature.properties.category || 'Unknown Category';
+                    const province = feature.properties.province || 'Unknown';
+                    const coords = [feature.geometry.coordinates[0], feature.geometry.coordinates[1]];
+                    const formattedCoords = formatCoordinates(coords[0], coords[1]);
+
+                    return `
+                        <div class="popup-card">
+                            <div class="popup-header">
+                                <div>
+                                    <div class="popup-title">${title}</div>
+                                    <div class="popup-badge">${categoryLabel}</div>
+                                </div>
+                            </div>
+                            <div class="popup-row">
+                                <span class="popup-icon"><i class="fa-solid fa-map-pin"></i></span>
+                                <div class="popup-meta">
+                                    <span class="label">Province</span>
+                                    <span class="value">${province}</span>
+                                </div>
+                            </div>
+                            <div class="popup-row">
+                                <span class="popup-icon"><i class="fa-solid fa-layer-group"></i></span>
+                                <div class="popup-meta">
+                                    <span class="label">Category</span>
+                                    <span class="value">${categoryLabel}</span>
+                                </div>
+                            </div>
+                            <div class="popup-row">
+                                <span class="popup-icon"><i class="fa-solid fa-location-crosshairs"></i></span>
+                                <div class="popup-meta">
+                                    <span class="label">Coordinates</span>
+                                    <span class="value">${formattedCoords}</span>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                };
+
+                Object.keys(categoryMap).forEach(catId => {
+                    if (!map.getLayer(catId)) return;
+                    map.on('click', catId, (event) => {
+                        const feature = event.features && event.features[0];
+                        if (!feature) return;
+                        new mapboxgl.Popup({
+                            offset: 18,
+                            closeButton: true,
+                            closeOnClick: true,
+                            className: 'mapboxgl-popup'
+                        })
+                            .setLngLat(feature.geometry.coordinates)
+                            .setHTML(buildPopupHtml(feature))
+                            .addTo(map);
+                    });
+
+                    map.on('mouseenter', catId, () => map.getCanvas().style.cursor = 'pointer');
+                    map.on('mouseleave', catId, () => map.getCanvas().style.cursor = '');
+                });
+
+                // Build layers array for the legend UI
+                const layersArr = Object.keys(categoryMap).map(k => ({
+                    id: categoryMap[k].id,
+                    name: categoryMap[k].name,
+                    count: categoryMap[k].count,
+                    marker_style: categoryMap[k].id === 'gemstones' ? 'marker-star' : (categoryMap[k].id === 'dimension_stones' ? 'marker-square' : (categoryMap[k].id === 'chemical_fertilizer' ? 'marker-triangle' : 'marker-circle')),
+                    marker_color: categoryStyles[categoryMap[k].id] || '#6b7280',
+                    visible: categoryMap[k].visible,
+                    items: categoryMap[k].items || []
+                }));
+
+                renderLegendUI(layersArr);
+                // Build mineral-type index for the search panel
+                const mineralCounts = {};
+                const mineralToCategory = {};
+                features.forEach(f => {
+                    const mt = f.properties.mineralType || 'Unknown';
+                    mineralCounts[mt] = (mineralCounts[mt] || 0) + 1;
+                    if (!mineralToCategory[mt]) mineralToCategory[mt] = f.properties.category;
+                });
+                const mineralList = Object.keys(mineralCounts).map(k => ({ name: k, count: mineralCounts[k], category: mineralToCategory[k] }));
+                mineralList.sort((a,b)=>b.count - a.count);
+                renderSearchUI(mineralList);
+
+            } catch (error) {
+                console.error("Critical System Initialization Error parsing minerals.json:", error);
+            }
+        }
+
+        function renderLegendUI(layers) {
+            const listContainer = document.getElementById('dynamic-layer-list');
+            listContainer.innerHTML = '';
+            let activeCount = 0;
+
+            const buildMarkerHtml = (shape, color, size = 14) => {
+                if (shape === 'marker-triangle') {
+                    return `<span class="marker-icon marker-triangle" style="border-bottom-color: ${color}; width:0; height:0; border-left-width:${size/2}px; border-right-width:${size/2}px; border-bottom-width:${size}px"></span>`;
+                }
+                if (shape === 'marker-star') {
+                    return `<span class="marker-icon marker-star" style="color: ${color}; font-size:${size - 2}px"><i class="fa-solid fa-star"></i></span>`;
+                }
+                if (shape === 'marker-pill') {
+                    return `<span class="marker-icon marker-pill" style="background-color: ${color}; width:${size * 1.5}px; height:${Math.round(size / 1.75)}px"></span>`;
+                }
+                return `<span class="marker-icon ${shape}" style="background-color: ${color}; width:${size}px; height:${size}px"></span>`;
+            };
+
+            layers.forEach((group) => {
+                if (group.visible) activeCount++;
+
+                const groupItem = document.createElement('div');
+                groupItem.className = `layer-group-item ${group.visible ? '' : 'layer-disabled'}`;
+                groupItem.id = `group-${group.id}`;
+
+                const visualMarkerHtml = buildMarkerHtml(group.marker_style, group.marker_color, 14);
+
+                // Generates dynamic drop-down row profiles
+                let subItemsHtml = '';
+                group.items.forEach(subItem => {
+                    const subMarkerHtml = buildMarkerHtml(group.marker_style, subItem.color, 10);
+                    const safeMineralName = String(subItem.name)
+                        .replace(/\\/g, '\\\\')
+                        .replace(/'/g, "\\'")
+                        .replace(/"/g, '&quot;');
+                    subItemsHtml += `
+                        <li class="sub-item" data-mineral="${safeMineralName}" onclick="selectMineralType('${safeMineralName}', event)">
+                            <div class="sub-item-left">
+                                ${subMarkerHtml}
+                                <span>${subItem.name}</span>
+                            </div>
+                            <span class="sub-count">${subItem.count}</span>
+                        </li>
+                    `;
+                });
+
+                groupItem.innerHTML = `
+                    <div class="group-trigger">
+                        <div class="group-left" onclick="toggleDropdown('${group.id}')">
+                            <i class="fa-solid fa-chevron-down chevron"></i>
+                            ${visualMarkerHtml}
+                            <span>${group.name}</span>
+                        </div>
+                        <div class="group-right">
+                            <span class="count-badge">${group.count}</span>
+                            <button class="visibility-toggle ${group.visible ? 'active' : ''}" onclick="toggleLayerVisibility('${group.id}', event)">
+                                <i class="fa-regular ${group.visible ? 'fa-eye' : 'fa-eye-slash'}"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="group-dropdown">
+                        <ul class="sub-item-list">
+                            ${subItemsHtml}
+                        </ul>
+                    </div>
+                `;
+                listContainer.appendChild(groupItem);
+            });
+
+            document.getElementById('active-layers-text').innerText = `${activeCount} of ${layers.length} active`;
+        }
+
+        // View Toggles UI Events
+        function toggleDropdown(groupId) {
+            const el = document.getElementById(`group-${groupId}`);
+            el.classList.toggle('open');
+        }
+
+        function toggleLayerVisibility(groupId, event) {
+            event.stopPropagation(); // Avoid triggering dropdown layout routines simultaneously
+            const btn = event.currentTarget;
+            const icon = btn.querySelector('i');
+            const isVisible = btn.classList.toggle('active');
+            
+            if (isVisible) {
+                icon.className = 'fa-regular fa-eye';
+                if (window.map && window.map.getLayer && window.map.getLayer(groupId)) {
+                    map.setLayoutProperty(groupId, 'visibility', 'visible');
+                }
+            } else {
+                icon.className = 'fa-regular fa-eye-slash';
+                if (window.map && window.map.getLayer && window.map.getLayer(groupId)) {
+                    map.setLayoutProperty(groupId, 'visibility', 'none');
+                }
+            }
+            updateActiveTextCount();
+        }
+
+        function selectMineralType(mineralType, event) {
+            event.stopPropagation();
+            window.selectedMineralType = window.selectedMineralType === mineralType ? null : mineralType;
+            applyMineralTypeFilter();
+            updateSelectedMineralUI();
+        }
+
+        function applyMineralTypeFilter() {
+            const selectedType = window.selectedMineralType;
+            if (!window.globalCategoryMap || !window.map) return;
+
+            Object.keys(window.globalCategoryMap).forEach(catId => {
+                if (!map.getLayer(catId)) return;
+                if (selectedType) {
+                    map.setFilter(catId, ['all', ['==', ['get', 'category'], catId], ['==', ['get', 'mineralType'], selectedType]]);
+                    map.setLayoutProperty(catId, 'visibility', 'visible');
+                } else {
+                    map.setFilter(catId, ['==', ['get', 'category'], catId]);
+                }
+            });
+        }
+
+        function updateSelectedMineralUI() {
+            document.querySelectorAll('.sub-item').forEach(item => {
+                item.classList.toggle('active', window.selectedMineralType && item.dataset.mineral === window.selectedMineralType);
+            });
+        }
+
+        function toggleAllLayers(status) {
+            window.selectedMineralType = null;
+            document.querySelectorAll('.visibility-toggle').forEach(btn => {
+                const icon = btn.querySelector('i');
+                if (status) {
+                    btn.classList.add('active');
+                    icon.className = 'fa-regular fa-eye';
+                } else {
+                    btn.classList.remove('active');
+                    icon.className = 'fa-regular fa-eye-slash';
+                }
+            });
+            
+            // Also toggle all map layers
+            if (window.globalCategoryMap && window.map) {
+                Object.keys(window.globalCategoryMap).forEach(catId => {
+                    if (map.getLayer(catId)) {
+                        map.setLayoutProperty(catId, 'visibility', status ? 'visible' : 'none');
+                        if (status) {
+                            map.setFilter(catId, ['==', ['get', 'category'], catId]);
+                        }
+                    }
+                });
+            }
+            updateSelectedMineralUI();
+            updateActiveTextCount();
+        }
+
+        function updateActiveTextCount() {
+            const total = document.querySelectorAll('.layer-group-item').length;
+            const active = document.querySelectorAll('.visibility-toggle.active').length;
+            document.getElementById('active-layers-text').innerText = `${active} of ${total} active`;
+        }
+
+        // Search panel rendering and interactions
+        function renderSearchUI(minerals) {
+            const container = document.getElementById('search-results');
+            if (!container) return;
+            container.innerHTML = '';
+            minerals.forEach(m => {
+                const item = document.createElement('div');
+                item.className = 'search-item';
+                item.dataset.mineral = m.name;
+                item.innerHTML = `
+                    <div class="search-item-left">
+                        <div style="width:10px;height:10px;border-radius:3px;background:${getTypeColor(m.name)};margin-top:6px"></div>
+                        <div>
+                            <div class="label">${m.name}</div>
+                            <div class="sub">${(window.globalCategoryMap && window.globalCategoryMap[m.category]) ? window.globalCategoryMap[m.category].name : m.category}</div>
+                        </div>
+                    </div>
+                    <div class="search-count">${m.count} sites</div>
+                `;
+                item.addEventListener('click', (ev) => {
+                    ev.stopPropagation();
+                    const input = document.getElementById('search-input');
+                    if (input) {
+                        input.value = m.name;
+                        input.focus();
+                    }
+                    selectMineralType(m.name, ev);
+                });
+                container.appendChild(item);
+            });
+
+            // wire search input
+            const input = document.getElementById('search-input');
+            const clearBtn = document.getElementById('search-clear');
+            if (input) {
+                const panel = document.getElementById('search-panel');
+                const openPanel = () => { panel && panel.classList.remove('collapsed'); panel && panel.classList.add('open'); };
+                const closePanel = () => { panel && panel.classList.remove('open'); panel && panel.classList.add('collapsed'); };
+
+                input.addEventListener('input', () => {
+                    const q = input.value.toLowerCase().trim();
+                    document.querySelectorAll('.search-item').forEach(si => {
+                        const text = si.dataset.mineral.toLowerCase();
+                        si.style.display = text.includes(q) ? '' : 'none';
+                    });
+                });
+
+                input.addEventListener('focus', () => openPanel());
+                input.addEventListener('click', (e) => { e.stopPropagation(); openPanel(); });
+                // open when clicking the search icon
+                const icon = panel ? panel.querySelector('.fa-magnifying-glass') : null;
+                if (icon) icon.addEventListener('click', (e) => { e.stopPropagation(); openPanel(); const i = document.getElementById('search-input'); i && i.focus(); });
+
+                // close when clicking outside
+                document.addEventListener('click', (e) => {
+                    const panelEl = document.getElementById('search-panel');
+                    if (!panelEl) return;
+                    if (!panelEl.contains(e.target)) closePanel();
+                });
+            }
+            if (clearBtn) {
+                clearBtn.addEventListener('click', () => { if (input) { input.value=''; input.dispatchEvent(new Event('input')); } const panelEl = document.getElementById('search-panel'); panelEl && panelEl.classList.add('collapsed'); panelEl && panelEl.classList.remove('open'); });
+            }
+        }
+
+        // Fire Application Layer Engines
+        initPortalLayers();
+        // ── SECTION TOGGLE (Mineral Layers & Metallogenic Zones) ──
+function toggleSection(sectionId, headerEl) {
+    const section = document.getElementById(sectionId);
+    const chevron = headerEl.querySelector('.section-chevron');
+    const isOpen = section.style.maxHeight !== '0px' && section.style.maxHeight !== '';
+    if (isOpen) {
+        section.style.maxHeight = '0';
+        if (chevron) chevron.style.transform = 'rotate(0deg)';
+    } else {
+        section.style.maxHeight = '1000px';
+        if (chevron) chevron.style.transform = 'rotate(180deg)';
+    }
+}
+
+// ── METALLOGENIC ZONES CONFIG ──
+// Add file path here as you add each GeoJSON file
+const zoneConfig = {
+    'zone-01': { name: 'Korakoram Block',               color: '#ef4444', file: './metallogeniczones/fixR1.geojson' },
+    'zone-02': { name: 'Kohistan Magmati Arc',           color: '#f97316', file: '/metallogeniczones/fixR2.geojson' },
+    'zone-03': { name: 'Hazara Fold & Thrust Belt',      color: '#eab308', file: '/metallogeniczones/fixR3.geojson' },
+    'zone-04': { name: 'Salt Range Kalachitta Ranges',   color: '#22c55e', file: '/metallogeniczones/fixR4.geojson' },
+    'zone-05': { name: 'Indian Shield',                  color: '#06b6d4', file: '/metallogeniczones/fixR5.geojson' },
+    'zone-06': { name: 'Sulaiman Fold & Thrust Belt',    color: '#8b5cf6', file: '/metallogeniczones/fixR6.geojson' },
+    'zone-07': { name: 'Kirthar Fold & Thrust Belt',     color: '#ec4899', file: '/metallogeniczones/fixR7.geojson'},
+    'zone-08': { name: 'Axial Belt',                     color: '#14b8a6', file: '/metallogeniczones/fixR8.geojson' },
+    'zone-09': { name: 'Lasbela-Khuzdar Ophiolite Belt', color: '#64748b', file: '/metallogeniczones/fixR9.geojson' },
+    'zone-10': { name: 'Chaman-Ornach Nal Fault Zone',   color: '#f43f5e', file: '/metallogeniczones/fixR10.geojson' },
+    'zone-11': { name: 'Chagai Magmatic Arc',            color: '#0ea5e9', file: '/metallogeniczones/fixR11.geojson' },
+    'zone-12': { name: 'Makran Accretionary Prism',      color: '#a855f7', file: '/metallogeniczones/fixR12.geojson' },
+    'zone-13': { name: 'Rann of Kutch Zone',             color: '#10b981', file: '/metallogeniczones/fixR13.geojson'},
+};
+
+// ── LOAD ALL ZONES THAT HAVE FILES ──
+async function loadMetallogenicZones() {
+    await ensureMapReady();
+    for (const [zoneId, cfg] of Object.entries(zoneConfig)) {
+        if (!cfg.file) continue; // skip zones with no file yet
+        try {
+            const resp = await fetch(cfg.file);
+            if (!resp.ok) continue;
+            const data = await resp.json();
+
+            // Add source
+            if (!map.getSource(zoneId)) {
+                map.addSource(zoneId, { type: 'geojson', data });
+            }
+
+            // Add fill layer
+            if (!map.getLayer(zoneId + '-fill')) {
+                map.addLayer({
+                    id: zoneId + '-fill',
+                    type: 'fill',
+                    source: zoneId,
+                    paint: {
+                        'fill-color': cfg.color,
+                        'fill-opacity': 0.35
+                    }
+                });
+            }
+
+            // Add outline layer
+            if (!map.getLayer(zoneId + '-line')) {
+                map.addLayer({
+                    id: zoneId + '-line',
+                    type: 'line',
+                    source: zoneId,
+                    paint: {
+                        'line-color': cfg.color,
+                        'line-width': 1.5
+                    }
+                });
+            }
+
+            // Click popup
+            map.on('click', zoneId + '-fill', (e) => {
+                const num = zoneId.replace('zone-', '');
+                new mapboxgl.Popup({ offset: 12, closeButton: true })
+                    .setLngLat(e.lngLat)
+                    .setHTML(`
+                        <div class="popup-card">
+                            <div class="popup-header">
+                                <div>
+                                    <div class="popup-title">${cfg.name}</div>
+                                    <div class="popup-badge" style="background:${cfg.color}22;color:${cfg.color};">Zone ${num}</div>
+                                </div>
+                            </div>
+                            <div class="popup-row">
+                                <span class="popup-icon"><i class="fa-solid fa-mountain"></i></span>
+                                <div class="popup-meta">
+                                    <span class="label">Metallogenic Zone</span>
+                                    <span class="value">${cfg.name}</span>
+                                </div>
+                            </div>
+                            <div class="popup-row">
+                                <span class="popup-icon"><i class="fa-solid fa-hashtag"></i></span>
+                                <div class="popup-meta">
+                                    <span class="label">Zone Number</span>
+                                    <span class="value">${num} of 13</span>
+                                </div>
+                            </div>
+                        </div>
+                    `)
+                    .addTo(map);
+            });
+
+            map.on('mouseenter', zoneId + '-fill', () => map.getCanvas().style.cursor = 'pointer');
+            map.on('mouseleave', zoneId + '-fill', () => map.getCanvas().style.cursor = '');
+
+        } catch (err) {
+            console.warn(`Zone ${zoneId} failed to load:`, err);
+        }
+    }
+}
+
+// ── TOGGLE INDIVIDUAL ZONE EYE ──
+function toggleZone(zoneId, event) {
+    event.stopPropagation();
+    const btn = event.currentTarget;
+    const icon = btn.querySelector('i');
+    const isNowVisible = btn.classList.toggle('active');
+    icon.className = isNowVisible ? 'fa-regular fa-eye' : 'fa-regular fa-eye-slash';
+    if (map.getLayer(zoneId + '-fill')) {
+        map.setLayoutProperty(zoneId + '-fill', 'visibility', isNowVisible ? 'visible' : 'none');
+        map.setLayoutProperty(zoneId + '-line', 'visibility', isNowVisible ? 'visible' : 'none');
+    }
+}
+
+// ── CALL LOADER ON MAP LOAD ──
+map.on('load', () => {
+    loadMetallogenicZones();
+});
+
+function toggleAllZones(status) {
+    document.querySelectorAll('[id^="metallo-item-"] .visibility-toggle').forEach(btn => {
+        const icon = btn.querySelector('i');
+        if (status) {
+            btn.classList.add('active');
+            icon.className = 'fa-regular fa-eye';
+        } else {
+            btn.classList.remove('active');
+            icon.className = 'fa-regular fa-eye-slash';
+        }
+        // Extract zone id from the onclick attribute
+        const onclickVal = btn.getAttribute('onclick');
+        const match = onclickVal && onclickVal.match(/toggleZone\('(zone-\d+)'/);
+        if (match) {
+            const zoneId = match[1];
+            if (map.getLayer(zoneId + '-fill')) {
+                map.setLayoutProperty(zoneId + '-fill', 'visibility', status ? 'visible' : 'none');
+                map.setLayoutProperty(zoneId + '-line', 'visibility', status ? 'visible' : 'none');
+            }
+        }
+    });
+}
+
+// ── DISASTER LAYERS CONFIG ──
+// When you have the other GeoJSON files, just fill in the file paths below
+const disasterConfig = {
+    'disaster-flood':      { name: 'Flood Extent 2025', color: '#3b82f6', file: './flood_extend.geojson' },
+    'disaster-earthquake': { name: 'Earthquake Zones',  color: '#ef4444', file: null }, // add path when ready
+    'disaster-landslide':  { name: 'Landslide Risk',    color: '#a16207', file: null }, // add path when ready
+};
+
+async function loadDisasterLayers() {
+    await ensureMapReady();
+    for (const [layerId, cfg] of Object.entries(disasterConfig)) {
+        if (!cfg.file) continue;
+        try {
+            const resp = await fetch(cfg.file);
+            if (!resp.ok) continue;
+            const data = await resp.json();
+
+            if (!map.getSource(layerId)) {
+                map.addSource(layerId, { type: 'geojson', data });
+            }
+            if (!map.getLayer(layerId + '-fill')) {
+                map.addLayer({ id: layerId + '-fill', type: 'fill', source: layerId, paint: { 'fill-color': cfg.color, 'fill-opacity': 0.45 } });
+            }
+            if (!map.getLayer(layerId + '-line')) {
+                map.addLayer({ id: layerId + '-line', type: 'line', source: layerId, paint: { 'line-color': cfg.color, 'line-width': 1.2 } });
+            }
+
+            map.on('click', layerId + '-fill', (e) => {
+                new mapboxgl.Popup({ offset: 12, closeButton: true })
+                    .setLngLat(e.lngLat)
+                    .setHTML(`<div class="popup-card">
+                        <div class="popup-header"><div>
+                            <div class="popup-title">${cfg.name}</div>
+                            <div class="popup-badge" style="background:${cfg.color}22;color:${cfg.color};">Disaster Layer</div>
+                        </div></div>
+                        <div class="popup-row">
+                            <span class="popup-icon"><i class="fa-solid fa-location-crosshairs"></i></span>
+                            <div class="popup-meta">
+                                <span class="label">Coordinates</span>
+                                <span class="value">${e.lngLat.lat.toFixed(4)}°N, ${e.lngLat.lng.toFixed(4)}°E</span>
+                            </div>
+                        </div>
+                    </div>`)
+                    .addTo(map);
+                    
+            });
+            map.on('mouseenter', layerId + '-fill', () => map.getCanvas().style.cursor = 'pointer');
+            map.on('mouseleave', layerId + '-fill', () => map.getCanvas().style.cursor = '');
+        } catch (err) {
+            console.warn(`Disaster layer ${layerId} failed:`, err);
+        }
+    }
+}
+
+function toggleDisasterLayer(layerId, event) {
+    event.stopPropagation();
+    const btn = event.currentTarget;
+    const icon = btn.querySelector('i');
+    const isNowVisible = btn.classList.toggle('active');
+    icon.className = isNowVisible ? 'fa-regular fa-eye' : 'fa-regular fa-eye-slash';
+    if (map.getLayer(layerId + '-fill')) {
+        map.setLayoutProperty(layerId + '-fill', 'visibility', isNowVisible ? 'visible' : 'none');
+        map.setLayoutProperty(layerId + '-line', 'visibility', isNowVisible ? 'visible' : 'none');
+    }
+}
+
+function toggleAllDisaster(status) {
+    document.querySelectorAll('[id^="disaster-item-"] .visibility-toggle').forEach(btn => {
+        btn.classList.toggle('active', status);
+        btn.querySelector('i').className = status ? 'fa-regular fa-eye' : 'fa-regular fa-eye-slash';
+    });
+    Object.keys(disasterConfig).forEach(layerId => {
+        if (map.getLayer(layerId + '-fill')) {
+            map.setLayoutProperty(layerId + '-fill', 'visibility', status ? 'visible' : 'none');
+            map.setLayoutProperty(layerId + '-line', 'visibility', status ? 'visible' : 'none');
+        }
+    });
+}
+
+map.on('load', () => { loadDisasterLayers(); });
+    </script>
+</body>
+</html>
