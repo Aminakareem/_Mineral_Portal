@@ -1,4 +1,5 @@
 import { DISASTER_LAYERS, METALLOGENIC_ZONES } from '../config/layers';
+import { FLOOD_LAYERS } from '../config/floodData';
 import { LANDSLIDE_REGIONS, SUSCEPTIBILITY_CLASSES } from '../config/landslideData';
 
 const STAT_SETS = {
@@ -58,8 +59,8 @@ const STAT_SETS = {
     {
       icon: 'fa-water',
       tone: 'blue',
-      value: data.visibleFlood ? 'On' : 'Off',
-      label: 'Flood Layer',
+      value: `${data.visibleFloodCount}/${data.totalFloodLayers}`,
+      label: 'Flood Years',
     },
   ],
   landslide: (data) => [
@@ -93,7 +94,8 @@ export default function MapStatsBar({
   visibleZones,
   activeLayerCount,
   visibleHazards,
-  visibleFlood,
+  visibleFloodCount = 0,
+  totalFloodLayers = FLOOD_LAYERS.length,
   visibleLandslideRegions,
 }) {
   const stats = (STAT_SETS[activeTab] || STAT_SETS.layers)({
@@ -104,7 +106,8 @@ export default function MapStatsBar({
     visibleZones,
     activeLayerCount,
     visibleHazards,
-    visibleFlood,
+    visibleFloodCount,
+    totalFloodLayers,
     visibleLandslideRegions,
   });
 

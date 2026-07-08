@@ -61,6 +61,7 @@ export default function MapSidebar({ focusTab, onFocusHandled, onActiveTabChange
             disasterVisibility={props.disasterVisibility}
             onToggleLayer={props.onToggleDisasterLayer}
             onToggleAll={props.onToggleAllDisaster}
+            onToggleAllFloods={props.onToggleAllFloods}
             eqStartDate={props.eqStartDate}
             eqEndDate={props.eqEndDate}
             eqMinMag={props.eqMinMag}
@@ -70,6 +71,10 @@ export default function MapSidebar({ focusTab, onFocusHandled, onActiveTabChange
             onEqStartDateChange={props.onEqStartDateChange}
             onEqEndDateChange={props.onEqEndDateChange}
             onEqMinMagChange={props.onEqMinMagChange}
+            activeShakemapEventId={props.activeShakemapEventId}
+            shakemapMineralImpacts={props.shakemapMineralImpacts}
+            onSelectAffectedMineral={props.onSelectAffectedMineral}
+            onHideShakemap={props.onHideShakemap}
             embedded
           />
         )}

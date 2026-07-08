@@ -1,3 +1,9 @@
+import { FLOOD_LAYERS } from './floodData';
+
+const floodDisasterConfig = Object.fromEntries(
+  FLOOD_LAYERS.map((layer) => [layer.id, { name: layer.name, color: layer.color, file: layer.file }])
+);
+
 export const zoneConfig = {
   'zone-01': { name: 'Korakoram Block', color: '#ef4444', file: '/metallogeniczones/fixR1.geojson' },
   'zone-02': { name: 'Kohistan Magmati Arc', color: '#f97316', file: '/metallogeniczones/fixR2.geojson' },
@@ -15,8 +21,9 @@ export const zoneConfig = {
 };
 
 export const disasterConfig = {
-  'disaster-flood': { name: 'Flood Extent 2025', color: '#3b82f6', file: '/flood_extend.geojson' },
+  ...floodDisasterConfig,
   'disaster-earthquake': { name: 'Earthquake Zones', color: '#ef4444', file: null },
+  'disaster-faultline': { name: 'Fault Lines', color: '#ef4444', file: '/faultlines/pak-faultlines.json' },
 };
 
 export const METALLOGENIC_ZONES = [
@@ -36,8 +43,15 @@ export const METALLOGENIC_ZONES = [
 ];
 
 export const DISASTER_LAYERS = [
-  { id: 'disaster-flood', name: 'Flood Extent 2025', color: '#3b82f6', icon: 'fa-water' },
-  { id: 'disaster-earthquake', name: 'Earthquake Zones', color: '#ef4444', icon: 'fa-house-crack' },
+  ...FLOOD_LAYERS.map((layer) => ({
+    id: layer.id,
+    name: layer.name,
+    color: layer.color,
+    icon: layer.icon,
+    group: 'flood',
+  })),
+  { id: 'disaster-earthquake', name: 'Earthquake Zones', color: '#ef4444', icon: 'fa-house-crack', group: 'earthquake' },
+  { id: 'disaster-faultline', name: 'Fault Lines', color: '#ef4444', icon: 'fa-lines-leaning', group: 'earthquake' },
 ];
 
 export const categoryStyles = {

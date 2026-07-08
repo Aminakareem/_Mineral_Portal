@@ -1,0 +1,74 @@
+[
+  {
+    "year": 2010,
+    "shp": "G15_Flood_Inundation_2010_SUPARCO.shp",
+    "name": "Flood Extent 2010",
+    "file": "/flood-layers/flood_2010.geojson",
+    "featureCount": 1,
+    "sizeMb": 2.0043792724609375
+  },
+  {
+    "year": 2011,
+    "shp": "G16_Flood_Inundation_2011_SUPARCO_P.shp",
+    "name": "Flood Extent 2011",
+    "file": "/flood-layers/flood_2011.geojson",
+    "featureCount": 1,
+    "sizeMb": 2.6084136962890625
+  },
+  {
+    "year": 2012,
+    "shp": "G17_Flood_Inundation_2012_SUPARCO_P.shp",
+    "name": "Flood Extent 2012",
+    "file": "/flood-layers/flood_2012.geojson",
+    "featureCount": 1273,
+    "sizeMb": 0.6300563812255859
+  },
+  {
+    "year": 2013,
+    "shp": "G18_Flood_Inundation_2013_SUPARCO_P.shp",
+    "name": "Flood Extent 2013",
+    "file": "/flood-layers/flood_2013.geojson",
+    "featureCount": 1,
+    "sizeMb": 0.7268514633178711
+  },
+  {
+    "year": 2014,
+    "shp": "G19_Flood_Inundation_2014_SUPARCO_P.shp",
+    "name": "Flood Extent 2014",
+    "file": "/flood-layers/flood_2014.geojson",
+    "featureCount": 2810,
+    "sizeMb": 12.406706809997559
+  },
+  {
+    "year": 2015,
+    "shp": "G20_Flood_Inundation_2015_NDMA_GIS_Team_P.shp",
+    "name": "Flood Extent 2015",
+    "file": "/flood-layers/flood_2015.geojson",
+    "featureCount": 1,
+    "sizeMb": 0.5411090850830078
+  },
+  {
+    "year": 2022,
+    "shp": "2022flood_P.shp",
+    "name": "Flood Extent 2022",
+    "file": "/flood-layers/flood_2022.geojson",
+    "featureCount": 9608,
+    "sizeMb": 15.70191764831543
+  },
+  {
+    "year": 2023,
+    "shp": "VIIRS_20230726_20230730_FloodExtent_PAK.shp",
+    "name": "Flood Extent 2023 (VIIRS)",
+    "file": "/flood-layers/flood_2023.geojson",
+    "featureCount": 1,
+    "sizeMb": 7.501359939575195
+  },
+  {
+    "year": 2024,
+    "shp": "VIIRS_20240420_20240424_MaximumFloodExtent_Pakistan_P.shp",
+    "name": "Flood Extent 2024 (VIIRS)",
+    "file": "/flood-layers/flood_2024.geojson",
+    "featureCount": 1,
+    "sizeMb": 2.4637889862060547
+  }
+]

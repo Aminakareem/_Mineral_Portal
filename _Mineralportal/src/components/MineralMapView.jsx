@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { FLOOD_LAYER_IDS } from '../config/floodData';
 import { useMapboxMap } from '../hooks/useMapboxMap';
 import MapControls from './MapControls';
 import MapLegend from './MapLegend';
@@ -38,6 +39,7 @@ export default function MineralMapView({
     toggleAllZones,
     toggleDisasterLayer,
     toggleAllDisaster,
+    toggleAllFloods,
     toggleLandslideRegion,
     toggleAllLandslide,
     clearSelection,
@@ -54,6 +56,10 @@ export default function MineralMapView({
     setEqStartDate,
     setEqEndDate,
     setEqMinMag,
+    activeShakemapEventId,
+    shakemapMineralImpacts,
+    selectAffectedMineral,
+    hideShakemap,
     toggleFullscreen,
   } = useMapboxMap({ isActive, showLandslideOnMap, onLandslideShown });
 
@@ -74,6 +80,10 @@ export default function MineralMapView({
   );
   const visibleHazards = useMemo(
     () => Object.values(disasterVisibility).filter(Boolean).length,
+    [disasterVisibility]
+  );
+  const visibleFloodCount = useMemo(
+    () => FLOOD_LAYER_IDS.filter((id) => disasterVisibility[id]).length,
     [disasterVisibility]
   );
   const visibleLandslideRegions = useMemo(
@@ -109,7 +119,8 @@ export default function MineralMapView({
             visibleZones={visibleZones}
             activeLayerCount={activeLayerCount}
             visibleHazards={visibleHazards}
-            visibleFlood={disasterVisibility['disaster-flood']}
+            visibleFloodCount={visibleFloodCount}
+            totalFloodLayers={FLOOD_LAYER_IDS.length}
             visibleLandslideRegions={visibleLandslideRegions}
             mapReady={mapReady}
           />
@@ -132,6 +143,7 @@ export default function MineralMapView({
             disasterVisibility={disasterVisibility}
             onToggleDisasterLayer={toggleDisasterLayer}
             onToggleAllDisaster={toggleAllDisaster}
+            onToggleAllFloods={toggleAllFloods}
             landslideVisibility={landslideVisibility}
             onToggleLandslideRegion={toggleLandslideRegion}
             onToggleAllLandslide={toggleAllLandslide}
@@ -144,6 +156,10 @@ export default function MineralMapView({
             onEqStartDateChange={setEqStartDate}
             onEqEndDateChange={setEqEndDate}
             onEqMinMagChange={setEqMinMag}
+            activeShakemapEventId={activeShakemapEventId}
+            shakemapMineralImpacts={shakemapMineralImpacts}
+            onSelectAffectedMineral={selectAffectedMineral}
+            onHideShakemap={() => hideShakemap({ restoreAllEarthquakes: true })}
           />
         </div>
 

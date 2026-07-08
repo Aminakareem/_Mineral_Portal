@@ -13,7 +13,22 @@ import {
   zoneConfig,
 } from '../config/layers';
 import { LANDSLIDE_REGIONS } from '../config/landslideData';
+import { FLOOD_LAYER_IDS } from '../config/floodData';
 import { createFilledIconImageData, MAP_ICON_NAMES } from '../utils/markerShapes';
+import {
+  addShakemapLayers,
+  clearShakemapLayers,
+  fitMapToShakemap,
+  getEarthquakeEventId,
+  hasShakemapType,
+  loadShakemapData,
+} from '../utils/shakemap';
+import {
+  addShakemapMineralImpactLayers,
+  analyzeMineralShakemapImpact,
+  clearShakemapMineralImpactLayers,
+  SHAKEMAP_MINERAL_LAYER_IDS,
+} from '../utils/shakemapMineralImpact';
 
 const FOCUS_ZOOM = 11.5;
 
@@ -89,6 +104,22 @@ function clearSelectionPoint(map) {
   source.setData({ type: 'FeatureCollection', features: [] });
 }
 
+function setEarthquakeLayerVisible(map, visible) {
+  if (map?.getLayer('disaster-earthquake-fill')) {
+    map.setLayoutProperty('disaster-earthquake-fill', 'visibility', visible ? 'visible' : 'none');
+  }
+}
+
+function setDisasterLayerVisibility(map, layerId, visible) {
+  if (!map) return;
+  if (map.getLayer(`${layerId}-fill`)) {
+    map.setLayoutProperty(`${layerId}-fill`, 'visibility', visible ? 'visible' : 'none');
+  }
+  if (map.getLayer(`${layerId}-line`)) {
+    map.setLayoutProperty(`${layerId}-line`, 'visibility', visible ? 'visible' : 'none');
+  }
+}
+
 function createTypeColorGetter() {
   const mineralTypeColors = {};
   return {
@@ -112,6 +143,12 @@ export function useMapboxMap({ isActive, showLandslideOnMap = false, onLandslide
   const categoryMapRef = useRef({});
   const mineralsFeaturesRef = useRef([]);
   const popupRef = useRef(null);
+  const showShakemapRef = useRef(null);
+  const activeShakemapEventIdRef = useRef(null);
+  const lastEarthquakeFeatureRef = useRef(null);
+  const earthquakeFullDataRef = useRef(null);
+  const selectedEarthquakeFeatureRef = useRef(null);
+  const disasterVisibilityRef = useRef({});
   const typeColorRef = useRef(createTypeColorGetter());
 
   const [layers, setLayers] = useState([]);
@@ -136,6 +173,45 @@ export function useMapboxMap({ isActive, showLandslideOnMap = false, onLandslide
   const [eqLoading, setEqLoading] = useState(false);
   const [eqCount, setEqCount] = useState(0);
   const [eqError, setEqError] = useState(null);
+  const [shakemapLoading, setShakemapLoading] = useState(false);
+  const [shakemapError, setShakemapError] = useState(null);
+  const [activeShakemapEventId, setActiveShakemapEventId] = useState(null);
+  const [shakemapMineralImpacts, setShakemapMineralImpacts] = useState(null);
+  const shakemapImpactClickHandlerRef = useRef(null);
+
+  useEffect(() => {
+    disasterVisibilityRef.current = disasterVisibility;
+  }, [disasterVisibility]);
+
+  const updateEarthquakeDisplay = useCallback(() => {
+    const map = mapRef.current;
+    if (!map?.getLayer('disaster-earthquake-fill')) return;
+
+    const layerEnabled = disasterVisibilityRef.current['disaster-earthquake'];
+    if (!layerEnabled) {
+      setEarthquakeLayerVisible(map, false);
+      return;
+    }
+
+    if (activeShakemapEventIdRef.current) {
+      setEarthquakeLayerVisible(map, false);
+      return;
+    }
+
+    const source = map.getSource('earthquake-source');
+    if (!source) return;
+
+    if (selectedEarthquakeFeatureRef.current) {
+      source.setData({
+        type: 'FeatureCollection',
+        features: [selectedEarthquakeFeatureRef.current],
+      });
+    } else if (earthquakeFullDataRef.current) {
+      source.setData(earthquakeFullDataRef.current);
+    }
+
+    setEarthquakeLayerVisible(map, true);
+  }, []);
 
   const ensureMapReady = useCallback(() => {
     const map = mapRef.current;
@@ -502,15 +578,19 @@ export function useMapboxMap({ isActive, showLandslideOnMap = false, onLandslide
         const resp = await fetch(cfg.file);
         if (!resp.ok) continue;
         const data = await resp.json();
+        const firstGeometryType = data?.features?.[0]?.geometry?.type || '';
+        const isLineLayer = String(firstGeometryType).includes('LineString');
+        const isPolygonLayer = String(firstGeometryType).includes('Polygon');
 
         if (!map.getSource(layerId)) {
           map.addSource(layerId, { type: 'geojson', data });
         }
-        if (!map.getLayer(`${layerId}-fill`)) {
+        if (isPolygonLayer && !map.getLayer(`${layerId}-fill`)) {
           map.addLayer({
             id: `${layerId}-fill`,
             type: 'fill',
             source: layerId,
+            layout: { visibility: 'none' },
             paint: { 'fill-color': cfg.color, 'fill-opacity': 0.45 },
           });
         }
@@ -519,11 +599,13 @@ export function useMapboxMap({ isActive, showLandslideOnMap = false, onLandslide
             id: `${layerId}-line`,
             type: 'line',
             source: layerId,
-            paint: { 'line-color': cfg.color, 'line-width': 1.2 },
+            layout: { visibility: 'none' },
+            paint: { 'line-color': cfg.color, 'line-width': isLineLayer ? 2.2 : 1.2 },
           });
         }
 
-        map.on('click', `${layerId}-fill`, (e) => {
+        const interactiveLayerId = map.getLayer(`${layerId}-fill`) ? `${layerId}-fill` : `${layerId}-line`;
+        map.on('click', interactiveLayerId, (e) => {
           new mapboxgl.Popup({ offset: 12, closeButton: true })
             .setLngLat(e.lngLat)
             .setHTML(`<div class="popup-card">
@@ -542,10 +624,10 @@ export function useMapboxMap({ isActive, showLandslideOnMap = false, onLandslide
             .addTo(map);
         });
 
-        map.on('mouseenter', `${layerId}-fill`, () => {
+        map.on('mouseenter', interactiveLayerId, () => {
           map.getCanvas().style.cursor = 'pointer';
         });
-        map.on('mouseleave', `${layerId}-fill`, () => {
+        map.on('mouseleave', interactiveLayerId, () => {
           map.getCanvas().style.cursor = '';
         });
       } catch (err) {
@@ -636,6 +718,288 @@ export function useMapboxMap({ isActive, showLandslideOnMap = false, onLandslide
     }
   }, []);
 
+  const hideShakemap = useCallback(({ restoreAllEarthquakes = false } = {}) => {
+    const map = mapRef.current;
+    clearShakemapLayers(map);
+    clearShakemapMineralImpactLayers(map);
+    if (map && shakemapImpactClickHandlerRef.current) {
+      Object.values(SHAKEMAP_MINERAL_LAYER_IDS).forEach((layerId) => {
+        if (map.getLayer(layerId)) {
+          map.off('click', layerId, shakemapImpactClickHandlerRef.current);
+          map.off('mouseenter', layerId, shakemapImpactClickHandlerRef.current.onEnter);
+          map.off('mouseleave', layerId, shakemapImpactClickHandlerRef.current.onLeave);
+        }
+      });
+      shakemapImpactClickHandlerRef.current = null;
+    }
+    activeShakemapEventIdRef.current = null;
+    setActiveShakemapEventId(null);
+    setShakemapMineralImpacts(null);
+    setShakemapError(null);
+    if (restoreAllEarthquakes) {
+      selectedEarthquakeFeatureRef.current = null;
+    }
+    updateEarthquakeDisplay();
+  }, [updateEarthquakeDisplay]);
+
+  const buildEarthquakePopupHtml = useCallback((props, coords, eventId, shakemapAvailable) => {
+    const timeStr = new Date(props.time).toLocaleString();
+    const isActive = activeShakemapEventIdRef.current === eventId;
+    const shakemapBtnLabel = shakemapLoading
+      ? 'Loading ShakeMap...'
+      : isActive
+        ? 'Hide ShakeMap'
+        : 'Show ShakeMap';
+    const impacts = isActive ? shakemapMineralImpacts : null;
+    const impactSummary = impacts?.summary;
+
+    return `
+      <div class="popup-card" style="--popup-accent:#ef4444">
+        <div class="popup-accent-bar"></div>
+        <div class="popup-header">
+          <div>
+            <div class="popup-title">${props.place || 'Unknown Location'}</div>
+            <div class="popup-badge" style="background:#ef444422;color:#ef4444;border:1px solid #ef444444;">Magnitude ${props.mag} ${props.magType || ''}</div>
+          </div>
+        </div>
+        <div class="popup-row">
+          <span class="popup-icon"><i class="fa-solid fa-clock"></i></span>
+          <div class="popup-meta">
+            <span class="label">Time</span>
+            <span class="value">${timeStr}</span>
+          </div>
+        </div>
+        <div class="popup-row">
+          <span class="popup-icon"><i class="fa-solid fa-location-crosshairs"></i></span>
+          <div class="popup-meta">
+            <span class="label">Coordinates & Depth</span>
+            <span class="value">${coords[1].toFixed(4)}°N, ${coords[0].toFixed(4)}°E (${coords[2] || 0} km depth)</span>
+          </div>
+        </div>
+        ${props.mmi ? `
+        <div class="popup-row">
+          <span class="popup-icon"><i class="fa-solid fa-wave-square"></i></span>
+          <div class="popup-meta">
+            <span class="label">Max MMI (ShakeMap)</span>
+            <span class="value">${Number(props.mmi).toFixed(1)}</span>
+          </div>
+        </div>
+        ` : ''}
+        ${props.sig ? `
+        <div class="popup-row">
+          <span class="popup-icon"><i class="fa-solid fa-circle-exclamation"></i></span>
+          <div class="popup-meta">
+            <span class="label">Significance / Felt Reports</span>
+            <span class="value">${props.sig} pts / ${props.felt || 0} reports</span>
+          </div>
+        </div>
+        ` : ''}
+        ${shakemapAvailable ? `
+        <button type="button" class="popup-shakemap-btn${isActive ? ' active' : ''}" data-event-id="${eventId}">
+          <i class="fa-solid fa-map"></i> ${shakemapBtnLabel}
+        </button>
+        <p class="popup-shakemap-note">Live intensity contours from USGS ShakeMap</p>
+        ` : `
+        <p class="popup-shakemap-note unavailable">ShakeMap not published for this event yet.</p>
+        `}
+        ${impactSummary ? `
+        <div class="popup-shakemap-impact">
+          <div class="popup-shakemap-impact-title"><i class="fa-solid fa-gem"></i> Minerals in shaking zone</div>
+          <div class="popup-shakemap-impact-stats">
+            <span class="impact-stat high">${impactSummary.high} high</span>
+            <span class="impact-stat moderate">${impactSummary.moderate} moderate</span>
+            ${impactSummary.low ? `<span class="impact-stat low">${impactSummary.low} low</span>` : ''}
+          </div>
+          <p class="popup-shakemap-note">See Hazards panel for affected site names.</p>
+        </div>
+        ` : ''}
+        ${shakemapError ? `<p class="popup-shakemap-error">${shakemapError}</p>` : ''}
+        ${props.url ? `
+        <div style="margin-top: 10px; text-align: right;">
+          <a href="${props.url}" target="_blank" rel="noopener noreferrer" style="color: #60a5fa; text-decoration: none; font-size: 0.75rem; font-weight: 600;">
+            View on USGS Website <i class="fa-solid fa-up-right-from-square" style="font-size: 0.7rem; margin-left: 2px;"></i>
+          </a>
+        </div>
+        ` : ''}
+      </div>
+    `;
+  }, [shakemapError, shakemapLoading, shakemapMineralImpacts]);
+
+  const attachShakemapButton = useCallback((popup, eventId) => {
+    if (!popup || !eventId) return;
+    const button = popup.getElement()?.querySelector('.popup-shakemap-btn');
+    if (!button) return;
+
+    button.onclick = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      showShakemapRef.current?.(eventId);
+    };
+  }, []);
+
+  const refreshEarthquakePopup = useCallback((eventId) => {
+    const feature = lastEarthquakeFeatureRef.current;
+    if (!popupRef.current || !feature || getEarthquakeEventId(feature) !== eventId) return;
+
+    const props = feature.properties;
+    const coords = feature.geometry.coordinates;
+    popupRef.current.setHTML(
+      buildEarthquakePopupHtml(props, coords, eventId, hasShakemapType(feature))
+    );
+    attachShakemapButton(popupRef.current, eventId);
+  }, [attachShakemapButton, buildEarthquakePopupHtml]);
+
+  const bindShakemapImpactLayers = useCallback((map) => {
+    if (!map) return;
+
+    if (shakemapImpactClickHandlerRef.current) {
+      Object.values(SHAKEMAP_MINERAL_LAYER_IDS).forEach((layerId) => {
+        if (map.getLayer(layerId)) {
+          map.off('click', layerId, shakemapImpactClickHandlerRef.current);
+          map.off('mouseenter', layerId, shakemapImpactClickHandlerRef.current.onEnter);
+          map.off('mouseleave', layerId, shakemapImpactClickHandlerRef.current.onLeave);
+        }
+      });
+    }
+
+    const onClick = (event) => {
+      if (event.clickHandled) return;
+      event.clickHandled = true;
+      const feature = event.features?.[0];
+      if (!feature) return;
+      focusOnFeature(map, feature);
+    };
+
+    const onEnter = () => {
+      map.getCanvas().style.cursor = 'pointer';
+    };
+
+    const onLeave = () => {
+      map.getCanvas().style.cursor = '';
+    };
+
+    shakemapImpactClickHandlerRef.current = Object.assign(onClick, { onEnter, onLeave });
+
+    Object.values(SHAKEMAP_MINERAL_LAYER_IDS).forEach((layerId) => {
+      if (!map.getLayer(layerId)) return;
+      map.on('click', layerId, onClick);
+      map.on('mouseenter', layerId, onEnter);
+      map.on('mouseleave', layerId, onLeave);
+    });
+  }, [focusOnFeature]);
+
+  const selectAffectedMineral = useCallback((mineralId) => {
+    const map = mapRef.current;
+    const feature = mineralsFeaturesRef.current.find((item) => item.properties?.id === mineralId);
+    if (map && feature) {
+      focusOnFeature(map, feature);
+    }
+  }, [focusOnFeature]);
+
+  const showShakemap = useCallback(async (eventId) => {
+    const map = mapRef.current;
+    if (!map || !eventId) return;
+
+    if (activeShakemapEventIdRef.current === eventId) {
+      hideShakemap();
+      refreshEarthquakePopup(eventId);
+      return;
+    }
+
+    setShakemapLoading(true);
+    setShakemapError(null);
+    setShakemapMineralImpacts(null);
+    refreshEarthquakePopup(eventId);
+
+    try {
+      const shakemapData = await loadShakemapData(eventId);
+      await addShakemapLayers(map, shakemapData);
+      fitMapToShakemap(map, shakemapData.coordinates);
+
+      const eqFeature = lastEarthquakeFeatureRef.current;
+      const epicenter = eqFeature?.geometry?.coordinates
+        ? [eqFeature.geometry.coordinates[0], eqFeature.geometry.coordinates[1]]
+        : null;
+
+      const impacts = analyzeMineralShakemapImpact(
+        mineralsFeaturesRef.current,
+        shakemapData.contours,
+        shakemapData.coordinates,
+        epicenter
+      );
+
+      addShakemapMineralImpactLayers(map, impacts);
+      bindShakemapImpactLayers(map);
+
+      activeShakemapEventIdRef.current = eventId;
+      setActiveShakemapEventId(eventId);
+      setShakemapMineralImpacts(impacts);
+      setEarthquakeLayerVisible(map, false);
+
+      if (popupRef.current) {
+        popupRef.current.remove();
+        popupRef.current = null;
+      }
+    } catch (err) {
+      console.error(err);
+      setShakemapError(err.message || 'Failed to load ShakeMap.');
+      hideShakemap();
+    } finally {
+      setShakemapLoading(false);
+      if (activeShakemapEventIdRef.current !== eventId) {
+        refreshEarthquakePopup(eventId);
+      }
+    }
+  }, [bindShakemapImpactLayers, hideShakemap, refreshEarthquakePopup]);
+
+  showShakemapRef.current = showShakemap;
+
+  const openEarthquakePopup = useCallback((map, feature) => {
+    const eventId = getEarthquakeEventId(feature);
+    const switchingShakemap =
+      activeShakemapEventIdRef.current && activeShakemapEventIdRef.current !== eventId;
+
+    lastEarthquakeFeatureRef.current = feature;
+    selectedEarthquakeFeatureRef.current = feature;
+
+    if (switchingShakemap) {
+      hideShakemap();
+    }
+
+    const props = feature.properties;
+    const coords = feature.geometry.coordinates;
+    const shakemapAvailable = hasShakemapType(feature);
+
+    if (popupRef.current) {
+      popupRef.current.remove();
+      popupRef.current = null;
+    }
+
+    updateEarthquakeDisplay();
+
+    const popup = new mapboxgl.Popup({
+      offset: 10,
+      closeButton: true,
+      maxWidth: '360px',
+      className: 'mapboxgl-popup mineral-popup earthquake-popup',
+    })
+      .setLngLat(coords)
+      .setHTML(buildEarthquakePopupHtml(props, coords, eventId, shakemapAvailable))
+      .addTo(map);
+
+    attachShakemapButton(popup, eventId);
+
+    popup.on('close', () => {
+      popupRef.current = null;
+      if (!activeShakemapEventIdRef.current) {
+        selectedEarthquakeFeatureRef.current = null;
+      }
+      updateEarthquakeDisplay();
+    });
+
+    popupRef.current = popup;
+  }, [attachShakemapButton, buildEarthquakePopupHtml, hideShakemap, updateEarthquakeDisplay]);
+
   const fetchEarthquakes = useCallback(async (start, end, minMag) => {
     const map = mapRef.current;
     if (!map) return;
@@ -659,13 +1023,15 @@ export function useMapboxMap({ isActive, showLandslideOnMap = false, onLandslide
       }
       const data = await response.json();
       setEqCount(data.features?.length || 0);
+      earthquakeFullDataRef.current = data;
+      selectedEarthquakeFeatureRef.current = null;
 
       if (map.getSource('earthquake-source')) {
         map.getSource('earthquake-source').setData(data);
       } else {
         map.addSource('earthquake-source', {
           type: 'geojson',
-          data: data,
+          data,
         });
       }
 
@@ -679,11 +1045,11 @@ export function useMapboxMap({ isActive, showLandslideOnMap = false, onLandslide
               'interpolate',
               ['linear'],
               ['get', 'mag'],
-              1, 4,
-              3, 7,
-              5, 12,
-              7, 20,
-              9, 32
+              1, 2,
+              3, 3.5,
+              5, 6,
+              7, 9,
+              9, 13
             ],
             'circle-color': [
               'interpolate',
@@ -696,7 +1062,7 @@ export function useMapboxMap({ isActive, showLandslideOnMap = false, onLandslide
               9, '#7f1d1d'
             ],
             'circle-opacity': 0.8,
-            'circle-stroke-width': 1.5,
+            'circle-stroke-width': 1,
             'circle-stroke-color': '#ffffff',
             'circle-stroke-opacity': 0.9,
           }
@@ -707,60 +1073,7 @@ export function useMapboxMap({ isActive, showLandslideOnMap = false, onLandslide
           e.clickHandled = true;
           const feature = e.features?.[0];
           if (!feature) return;
-
-          const props = feature.properties;
-          const coords = feature.geometry.coordinates;
-          const timeStr = new Date(props.time).toLocaleString();
-
-          new mapboxgl.Popup({
-            offset: 10,
-            closeButton: true,
-            maxWidth: '340px',
-            className: 'mapboxgl-popup mineral-popup'
-          })
-            .setLngLat(coords)
-            .setHTML(`
-              <div class="popup-card" style="--popup-accent:#ef4444">
-                <div class="popup-accent-bar"></div>
-                <div class="popup-header">
-                  <div>
-                    <div class="popup-title">${props.place || 'Unknown Location'}</div>
-                    <div class="popup-badge" style="background:#ef444422;color:#ef4444;border:1px solid #ef444444;">Magnitude ${props.mag} ${props.magType || ''}</div>
-                  </div>
-                </div>
-                <div class="popup-row">
-                  <span class="popup-icon"><i class="fa-solid fa-clock"></i></span>
-                  <div class="popup-meta">
-                    <span class="label">Time</span>
-                    <span class="value">${timeStr}</span>
-                  </div>
-                </div>
-                <div class="popup-row">
-                  <span class="popup-icon"><i class="fa-solid fa-location-crosshairs"></i></span>
-                  <div class="popup-meta">
-                    <span class="label">Coordinates & Depth</span>
-                    <span class="value">${coords[1].toFixed(4)}°N, ${coords[0].toFixed(4)}°E (${coords[2] || 0} km depth)</span>
-                  </div>
-                </div>
-                ${props.sig ? `
-                <div class="popup-row">
-                  <span class="popup-icon"><i class="fa-solid fa-circle-exclamation"></i></span>
-                  <div class="popup-meta">
-                    <span class="label">Significance / Felt Reports</span>
-                    <span class="value">${props.sig} pts / ${props.felt || 0} reports</span>
-                  </div>
-                </div>
-                ` : ''}
-                ${props.url ? `
-                <div style="margin-top: 10px; text-align: right;">
-                  <a href="${props.url}" target="_blank" rel="noopener noreferrer" style="color: #60a5fa; text-decoration: none; font-size: 0.75rem; font-weight: 600;">
-                    View on USGS Website <i class="fa-solid fa-up-right-from-square" style="font-size: 0.7rem; margin-left: 2px;"></i>
-                  </a>
-                </div>
-                ` : ''}
-              </div>
-            `)
-            .addTo(map);
+          openEarthquakePopup(map, feature);
         });
 
         map.on('mouseenter', 'disaster-earthquake-fill', () => {
@@ -769,25 +1082,50 @@ export function useMapboxMap({ isActive, showLandslideOnMap = false, onLandslide
         map.on('mouseleave', 'disaster-earthquake-fill', () => {
           map.getCanvas().style.cursor = '';
         });
+      } else {
+        const radiusExpr = [
+          'interpolate',
+          ['linear'],
+          ['get', 'mag'],
+          1, 2,
+          3, 3.5,
+          5, 6,
+          7, 9,
+          9, 13,
+        ];
+        map.setPaintProperty('disaster-earthquake-fill', 'circle-radius', radiusExpr);
+        map.setPaintProperty('disaster-earthquake-fill', 'circle-stroke-width', 1);
       }
 
-      const isVisible = disasterVisibility['disaster-earthquake'];
-      map.setLayoutProperty('disaster-earthquake-fill', 'visibility', isVisible ? 'visible' : 'none');
+      updateEarthquakeDisplay();
     } catch (err) {
       console.error(err);
       setEqError(err.message || 'Failed to fetch earthquake data');
     } finally {
       setEqLoading(false);
     }
-  }, [disasterVisibility]);
+  }, [openEarthquakePopup, updateEarthquakeDisplay]);
 
   useEffect(() => {
     if (mapReady && disasterVisibility['disaster-earthquake']) {
       fetchEarthquakes(eqStartDate, eqEndDate, eqMinMag);
     } else if (mapReady && mapRef.current?.getLayer('disaster-earthquake-fill')) {
       mapRef.current.setLayoutProperty('disaster-earthquake-fill', 'visibility', 'none');
+      selectedEarthquakeFeatureRef.current = null;
+      hideShakemap();
     }
-  }, [mapReady, disasterVisibility['disaster-earthquake'], eqStartDate, eqEndDate, eqMinMag, fetchEarthquakes]);
+  }, [mapReady, disasterVisibility['disaster-earthquake'], eqStartDate, eqEndDate, eqMinMag, fetchEarthquakes, hideShakemap]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!mapReady || !map) return;
+
+    Object.entries(disasterConfig).forEach(([layerId, cfg]) => {
+      if (!cfg.file) return;
+      const visible = Boolean(disasterVisibility[layerId]);
+      setDisasterLayerVisibility(map, layerId, visible);
+    });
+  }, [mapReady, disasterVisibility]);
 
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
@@ -956,10 +1294,7 @@ export function useMapboxMap({ isActive, showLandslideOnMap = false, onLandslide
     });
 
     Object.keys(disasterConfig).forEach((layerId) => {
-      if (map?.getLayer(`${layerId}-fill`)) {
-        map.setLayoutProperty(`${layerId}-fill`, 'visibility', status ? 'visible' : 'none');
-        map.setLayoutProperty(`${layerId}-line`, 'visibility', status ? 'visible' : 'none');
-      }
+      setDisasterLayerVisibility(map, layerId, status);
     });
   };
 
@@ -1015,8 +1350,9 @@ export function useMapboxMap({ isActive, showLandslideOnMap = false, onLandslide
     setDisasterVisibility((prev) => ({ ...prev, [layerId]: nextVisible }));
 
     if (map?.getLayer(`${layerId}-fill`)) {
-      map.setLayoutProperty(`${layerId}-fill`, 'visibility', nextVisible ? 'visible' : 'none');
-      map.setLayoutProperty(`${layerId}-line`, 'visibility', nextVisible ? 'visible' : 'none');
+      setDisasterLayerVisibility(map, layerId, nextVisible);
+    } else if (map?.getLayer(`${layerId}-line`)) {
+      setDisasterLayerVisibility(map, layerId, nextVisible);
     }
   };
 
@@ -1025,6 +1361,21 @@ export function useMapboxMap({ isActive, showLandslideOnMap = false, onLandslide
     setDisasterVisibility(Object.fromEntries(Object.keys(disasterConfig).map((id) => [id, status])));
 
     Object.keys(disasterConfig).forEach((layerId) => {
+      setDisasterLayerVisibility(map, layerId, status);
+    });
+  };
+
+  const toggleAllFloods = (status) => {
+    const map = mapRef.current;
+    setDisasterVisibility((prev) => {
+      const next = { ...prev };
+      FLOOD_LAYER_IDS.forEach((id) => {
+        next[id] = status;
+      });
+      return next;
+    });
+
+    FLOOD_LAYER_IDS.forEach((layerId) => {
       if (map?.getLayer(`${layerId}-fill`)) {
         map.setLayoutProperty(`${layerId}-fill`, 'visibility', status ? 'visible' : 'none');
         map.setLayoutProperty(`${layerId}-line`, 'visibility', status ? 'visible' : 'none');
@@ -1068,6 +1419,7 @@ export function useMapboxMap({ isActive, showLandslideOnMap = false, onLandslide
     toggleAllZones,
     toggleDisasterLayer,
     toggleAllDisaster,
+    toggleAllFloods,
     toggleLandslideRegion,
     toggleAllLandslide,
     zoomIn,
@@ -1084,5 +1436,10 @@ export function useMapboxMap({ isActive, showLandslideOnMap = false, onLandslide
     setEqStartDate,
     setEqEndDate,
     setEqMinMag,
+    shakemapLoading,
+    activeShakemapEventId,
+    shakemapMineralImpacts,
+    hideShakemap,
+    selectAffectedMineral,
   };
 }
