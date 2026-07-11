@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { MarkerIcon } from './MarkerIcon';
 
 export default function LayerGroupItem({
@@ -9,10 +10,17 @@ export default function LayerGroupItem({
   onToggleVisibility,
   onSelectMineral,
 }) {
+  const itemRef = useRef(null);
   const hasActiveChild = group.items.some((item) => item.name === selectedMineralType);
+
+  useEffect(() => {
+    if (!isOpen || !itemRef.current) return;
+    itemRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [isOpen]);
 
   return (
     <div
+      ref={itemRef}
       className={`layer-group-item${isOpen ? ' open' : ''}${isVisible ? '' : ' dimmed'}${hasActiveChild ? ' has-active-child' : ''}`}
       id={`group-${group.id}`}
     >
@@ -50,7 +58,7 @@ export default function LayerGroupItem({
               }}
             >
               <div className="sub-item-left">
-                <MarkerIcon shape={group.marker_style} color={group.marker_color} size={20} />
+                <MarkerIcon shape={group.marker_style} color={subItem.color || group.marker_color} size={20} />
                 <span>{subItem.name}</span>
               </div>
               <span className="sub-count">{subItem.count}</span>

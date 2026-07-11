@@ -81,7 +81,42 @@ export const categoryIconMap = {
   unknown: 'circle',
 };
 
-export const typePalette = ['#f97316', '#22c55e', '#2563eb', '#db2777', '#eab308', '#14b8a6', '#a855f7', '#f43f5e', '#0f766e', '#4b5563'];
+export const typePalette = [
+  '#f97316',
+  '#22c55e',
+  '#2563eb',
+  '#db2777',
+  '#eab308',
+  '#facc15',
+  '#14b8a6',
+  '#a855f7',
+  '#f43f5e',
+  '#06b6d4',
+  '#ec4899',
+];
+
+export function buildMineralTypeColorMap(mineralTypes) {
+  const unique = [...new Set(
+    mineralTypes
+      .map((typeName) => String(typeName || '').trim())
+      .filter(Boolean)
+  )].sort((a, b) => a.localeCompare(b));
+
+  const colorMap = {};
+  unique.forEach((typeName, index) => {
+    colorMap[typeName] = typePalette[index % typePalette.length];
+  });
+  return colorMap;
+}
+
+export function buildMineralTypeColorExpression(mineralTypeColors) {
+  const expression = ['match', ['get', 'mineralType']];
+  Object.entries(mineralTypeColors).forEach(([typeName, color]) => {
+    expression.push(typeName, color);
+  });
+  expression.push('#64748b');
+  return expression;
+}
 
 export function normalizeCategory(cat) {
   const s = (cat || '').toString().toLowerCase().trim();

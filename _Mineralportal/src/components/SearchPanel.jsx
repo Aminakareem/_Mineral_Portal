@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { categoryStyles, getCategoryMarkerStyle } from '../config/layers';
+import { getCategoryMarkerStyle } from '../config/layers';
 import { MarkerIcon } from './MarkerIcon';
 
 export default function SearchPanel({ mineralList, categoryMap, getTypeColor, onSelectMineral }) {
@@ -111,7 +111,7 @@ export default function SearchPanel({ mineralList, categoryMap, getTypeColor, on
                 <div className="search-item-left">
                   <MarkerIcon
                     shape={getCategoryMarkerStyle(m.category)}
-                    color={categoryStyles[m.category] || getTypeColor(m.name)}
+                    color={getTypeColor(m.name)}
                     size={22}
                   />
                   <div>

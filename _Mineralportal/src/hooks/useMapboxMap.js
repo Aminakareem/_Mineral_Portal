@@ -4,6 +4,8 @@ import {
   categoryIconMap,
   categoryStyles,
   categoryDisplayNames,
+  buildMineralTypeColorExpression,
+  buildMineralTypeColorMap,
   computeBBox,
   disasterConfig,
   formatCoordinates,
@@ -124,6 +126,12 @@ function createTypeColorGetter() {
   const mineralTypeColors = {};
   return {
     mineralTypeColors,
+    initialize(colorMap = {}) {
+      Object.keys(mineralTypeColors).forEach((key) => {
+        delete mineralTypeColors[key];
+      });
+      Object.assign(mineralTypeColors, colorMap);
+    },
     getTypeColor: (typeName) => {
       const key = String(typeName || 'Unknown').trim();
       if (!key) return '#64748b';
@@ -136,7 +144,14 @@ function createTypeColorGetter() {
   };
 }
 
-export function useMapboxMap({ isActive, showLandslideOnMap = false, onLandslideShown }) {
+export function useMapboxMap({
+  isActive,
+  showLandslideOnMap = false,
+  onLandslideShown,
+  productionMode = false,
+  regionFilter = null,
+  onMineralFeatureSelect,
+}) {
   const mapContainerRef = useRef(null);
   const mapRef = useRef(null);
   const pakistanBboxRef = useRef(null);
@@ -149,10 +164,13 @@ export function useMapboxMap({ isActive, showLandslideOnMap = false, onLandslide
   const earthquakeFullDataRef = useRef(null);
   const selectedEarthquakeFeatureRef = useRef(null);
   const disasterVisibilityRef = useRef({});
+  const regionFilterRef = useRef(regionFilter);
+  const onMineralFeatureSelectRef = useRef(onMineralFeatureSelect);
   const typeColorRef = useRef(createTypeColorGetter());
 
   const [layers, setLayers] = useState([]);
   const [mineralList, setMineralList] = useState([]);
+  const [mineralsFeatures, setMineralsFeatures] = useState([]);
   const [openGroups, setOpenGroups] = useState({});
   const [layerVisibility, setLayerVisibility] = useState({});
   const [selectedMineralType, setSelectedMineralType] = useState(null);
@@ -182,6 +200,86 @@ export function useMapboxMap({ isActive, showLandslideOnMap = false, onLandslide
   useEffect(() => {
     disasterVisibilityRef.current = disasterVisibility;
   }, [disasterVisibility]);
+
+  useEffect(() => {
+    regionFilterRef.current = regionFilter;
+  }, [regionFilter]);
+
+  useEffect(() => {
+    onMineralFeatureSelectRef.current = onMineralFeatureSelect;
+  }, [onMineralFeatureSelect]);
+
+  const clearProductionRegionLayers = useCallback((map) => {
+    if (!map) return;
+    ['production-region-fill', 'production-region-line'].forEach((layerId) => {
+      if (map.getLayer(layerId)) map.removeLayer(layerId);
+    });
+    if (map.getSource('production-region-highlight')) {
+      map.removeSource('production-region-highlight');
+    }
+  }, []);
+
+  const applyProductionRegion = useCallback((region) => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    clearProductionRegionLayers(map);
+    if (!region?.bbox) return;
+    map.fitBounds(region.bbox, { padding: 70, duration: 1200 });
+  }, [clearProductionRegionLayers]);
+
+  const clearProductionRegion = useCallback(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    clearProductionRegionLayers(map);
+    const bbox = pakistanBboxRef.current;
+    if (bbox) {
+      map.fitBounds(bbox, { padding: 50, duration: 1200 });
+    }
+  }, [clearProductionRegionLayers]);
+
+  const applyProductionMineralSelection = useCallback((productionMineralName, portalType) => {
+    const map = mapRef.current;
+    const categoryMap = categoryMapRef.current;
+    if (!map || !categoryMap) return;
+
+    const province = regionFilterRef.current;
+
+    Object.keys(categoryMap).forEach((catId) => {
+      if (!map.getLayer(catId)) return;
+
+      if (!province && !portalType) {
+        map.setFilter(catId, ['==', ['get', 'category'], catId]);
+      } else {
+        const filters = [['==', ['get', 'category'], catId]];
+        if (province) {
+          filters.push(['==', ['get', 'province'], province]);
+        }
+        if (portalType) {
+          filters.push(['==', ['get', 'mineralType'], portalType]);
+        }
+        map.setFilter(catId, ['all', ...filters]);
+      }
+      map.setLayoutProperty(catId, 'visibility', 'visible');
+    });
+
+    if (productionMineralName && portalType) {
+      const match = mineralsFeaturesRef.current.find(
+        (feature) => feature.properties?.mineralType === portalType
+          && (!province || feature.properties?.province === province)
+      );
+      if (match) {
+        const [lng, lat] = match.geometry.coordinates;
+        map.flyTo({
+          center: [lng, lat],
+          zoom: Math.max(map.getZoom(), 8.5),
+          duration: 1200,
+          essential: true,
+        });
+      }
+    }
+  }, []);
 
   const updateEarthquakeDisplay = useCallback(() => {
     const map = mapRef.current;
@@ -234,9 +332,12 @@ export function useMapboxMap({ isActive, showLandslideOnMap = false, onLandslide
     const categoryKey = feature.properties.category;
     const categoryLabel = categoryMap[categoryKey]?.name || categoryKey || 'Unknown Category';
     const province = feature.properties.province || 'Unknown';
+    const district = feature.properties.district || '';
+    const company = feature.properties.company || '';
+    const areaSqKm = feature.properties.areaSqKm;
     const coords = feature.geometry.coordinates;
     const formattedCoords = formatCoordinates(coords[0], coords[1]);
-    const accent = categoryStyles[categoryKey] || '#10b981';
+    const accent = typeColorRef.current.getTypeColor(title) || categoryStyles[categoryKey] || '#10b981';
 
     return `
       <div class="popup-card" style="--popup-accent:${accent}">
@@ -254,6 +355,33 @@ export function useMapboxMap({ isActive, showLandslideOnMap = false, onLandslide
             <span class="value">${province}</span>
           </div>
         </div>
+        ${district ? `
+        <div class="popup-row">
+          <span class="popup-icon"><i class="fa-solid fa-map"></i></span>
+          <div class="popup-meta">
+            <span class="label">District</span>
+            <span class="value">${district}</span>
+          </div>
+        </div>
+        ` : ''}
+        ${company ? `
+        <div class="popup-row">
+          <span class="popup-icon"><i class="fa-solid fa-building"></i></span>
+          <div class="popup-meta">
+            <span class="label">Company</span>
+            <span class="value">${company}</span>
+          </div>
+        </div>
+        ` : ''}
+        ${areaSqKm != null && areaSqKm !== '' ? `
+        <div class="popup-row">
+          <span class="popup-icon"><i class="fa-solid fa-ruler-combined"></i></span>
+          <div class="popup-meta">
+            <span class="label">Area</span>
+            <span class="value">${areaSqKm} sq km</span>
+          </div>
+        </div>
+        ` : ''}
         <div class="popup-row">
           <span class="popup-icon"><i class="fa-solid fa-chart-line"></i></span>
           <div class="popup-meta">
@@ -303,6 +431,9 @@ export function useMapboxMap({ isActive, showLandslideOnMap = false, onLandslide
       .setHTML(buildPopupHtml(feature, categoryMap))
       .addTo(map);
 
+    const clickedMineral = feature.properties?.mineralType || feature.properties?.name || null;
+    onMineralFeatureSelectRef.current?.(clickedMineral);
+
     popupRef.current.on('close', () => {
       popupRef.current = null;
     });
@@ -343,7 +474,12 @@ export function useMapboxMap({ isActive, showLandslideOnMap = false, onLandslide
       const data = await response.json();
 
       const categoryMap = {};
-      const { getTypeColor, mineralTypeColors } = typeColorRef.current;
+      const mineralTypeColorMap = buildMineralTypeColorMap(
+        data.map((site) => site.mineralType || site.name)
+      );
+      typeColorRef.current.initialize(mineralTypeColorMap);
+      const { getTypeColor } = typeColorRef.current;
+      const mineralTypeColorExpression = buildMineralTypeColorExpression(mineralTypeColorMap);
       const getCategoryIcon = (cat) => categoryIconMap[cat] || 'circle';
       const features = [];
 
@@ -382,9 +518,12 @@ export function useMapboxMap({ isActive, showLandslideOnMap = false, onLandslide
             category: cat,
             province: site.province,
             district: site.district,
+            company: site.company || '',
+            areaSqKm: site.areaSqKm ?? null,
             description: site.description,
             status: site.status,
             icon: getCategoryIcon(cat),
+            markerColor: mColor,
           },
         });
       });
@@ -398,14 +537,9 @@ export function useMapboxMap({ isActive, showLandslideOnMap = false, onLandslide
         }));
       });
 
-      const mineralTypeColorExpression = ['match', ['get', 'mineralType']];
-      Object.entries(mineralTypeColors).forEach(([typeName, color]) => {
-        mineralTypeColorExpression.push(typeName, color);
-      });
-      mineralTypeColorExpression.push('#64748b');
-
       const mineralGeo = { type: 'FeatureCollection', features };
       mineralsFeaturesRef.current = features;
+      setMineralsFeatures(features);
       if (map.getSource('minerals')) {
         map.getSource('minerals').setData(mineralGeo);
       } else {
@@ -426,7 +560,7 @@ export function useMapboxMap({ isActive, showLandslideOnMap = false, onLandslide
             'icon-ignore-placement': true,
           },
           paint: {
-            'icon-color': categoryStyles[catId] || '#94a3b8',
+            'icon-color': mineralTypeColorExpression,
             'icon-halo-width': 0,
           },
         });
@@ -1128,6 +1262,11 @@ export function useMapboxMap({ isActive, showLandslideOnMap = false, onLandslide
   }, [mapReady, disasterVisibility]);
 
   useEffect(() => {
+    if (!mapReady || !productionMode) return;
+    applyProductionMineralSelection(null, null);
+  }, [mapReady, productionMode, regionFilter, applyProductionMineralSelection]);
+
+  useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
     const map = new mapboxgl.Map({
@@ -1167,6 +1306,9 @@ export function useMapboxMap({ isActive, showLandslideOnMap = false, onLandslide
       }
       placeLandslideLayersOnTop(map);
       setMapReady(true);
+      requestAnimationFrame(() => {
+        map.resize();
+      });
     });
 
     return () => {
@@ -1186,7 +1328,10 @@ export function useMapboxMap({ isActive, showLandslideOnMap = false, onLandslide
   }, [selectedMineralType, applyMineralTypeFilter, layers]);
 
   const toggleDropdown = (groupId) => {
-    setOpenGroups((prev) => ({ ...prev, [groupId]: !prev[groupId] }));
+    setOpenGroups((prev) => {
+      const isOpen = !!prev[groupId];
+      return isOpen ? {} : { [groupId]: true };
+    });
   };
 
   const toggleLayerVisibility = (groupId) => {
@@ -1212,7 +1357,7 @@ export function useMapboxMap({ isActive, showLandslideOnMap = false, onLandslide
     });
   };
 
-  const clearSelection = () => {
+  const clearSelection = useCallback(() => {
     setSelectedMineralType(null);
     const map = mapRef.current;
     if (map) clearSelectionPoint(map);
@@ -1220,10 +1365,20 @@ export function useMapboxMap({ isActive, showLandslideOnMap = false, onLandslide
       popupRef.current.remove();
       popupRef.current = null;
     }
-  };
+  }, []);
 
   const zoomIn = () => mapRef.current?.zoomIn({ duration: 350 });
   const zoomOut = () => mapRef.current?.zoomOut({ duration: 350 });
+  const nudgeZoom = useCallback((delta, offsetX = 0) => {
+    const map = mapRef.current;
+    if (!map) return;
+    map.easeTo({
+      zoom: Math.max(3.5, map.getZoom() + delta),
+      offset: [offsetX, 0],
+      duration: 700,
+      essential: true,
+    });
+  }, []);
   const resetNorth = () => mapRef.current?.easeTo({ bearing: 0, pitch: 0, duration: 600 });
   const resetMapView = () => {
     const map = mapRef.current;
@@ -1398,6 +1553,7 @@ export function useMapboxMap({ isActive, showLandslideOnMap = false, onLandslide
     mapReady,
     layers,
     mineralList,
+    mineralsFeatures,
     openGroups,
     layerVisibility,
     selectedMineralType,
@@ -1424,6 +1580,7 @@ export function useMapboxMap({ isActive, showLandslideOnMap = false, onLandslide
     toggleAllLandslide,
     zoomIn,
     zoomOut,
+    nudgeZoom,
     resetNorth,
     resetMapView,
     toggleFullscreen,
@@ -1441,5 +1598,8 @@ export function useMapboxMap({ isActive, showLandslideOnMap = false, onLandslide
     shakemapMineralImpacts,
     hideShakemap,
     selectAffectedMineral,
+    applyProductionRegion,
+    applyProductionMineralSelection,
+    clearProductionRegion,
   };
 }
